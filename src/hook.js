@@ -31,8 +31,10 @@ function decide(payload, skill, config) {
   const fsTools = ['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
   if (fsTools.includes(tool)) {
     const p = input.file_path || input.path || input.notebook_path || '';
-    const verb = tool === 'Read' ? 'READ' : 'WRITE';
-    if (p && isPathDenied(p, allowPaths)) {
+    const isWrite = tool !== 'Read';
+    const verb = isWrite ? 'WRITE' : 'READ';
+    const mode = isWrite ? 'write' : 'read';
+    if (p && isPathDenied(p, allowPaths, mode)) {
       return {
         action: 'BLOCK',
         verb,

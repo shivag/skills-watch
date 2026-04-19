@@ -1,11 +1,12 @@
 {
   "name": "skills-watch",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A one-time-install safety belt for Claude Code. Guards every tool call against a universal deny-list, with per-skill allow-lists managed by CLI.",
   "bin": {
     "skills-watch": "bin/skills-watch.js",
     "skills-watch-hook": "bin/skills-watch-hook.js",
-    "skills-watch-prompt-hook": "bin/skills-watch-prompt-hook.js"
+    "skills-watch-prompt-hook": "bin/skills-watch-prompt-hook.js",
+    "skills-watch-session-hook": "bin/skills-watch-session-hook.js"
   },
   "main": "src/cli.js",
   "files": [

@@ -17,6 +17,21 @@ const DENY_PATHS_RAW = [
   '~/.config/git/credentials',
 ];
 
+// Files that are always read-allowed (common use case: a skill legitimately
+// wants to inspect your shell config) but WRITE-denied (no skill should be
+// silently editing your RC files to stay resident).
+const DENY_WRITE_PATHS_RAW = [
+  '~/.zshrc',
+  '~/.zshenv',
+  '~/.zprofile',
+  '~/.bashrc',
+  '~/.bash_profile',
+  '~/.profile',
+  '~/.config/fish/config.fish',
+  '~/.crontab',
+  '~/.launchd.conf',
+];
+
 const DEFAULT_ALLOW_HOSTS = [
   '*.anthropic.com',
   'api.openai.com',
@@ -57,6 +72,10 @@ function denyPaths() {
   return DENY_PATHS_RAW.map(expandHome);
 }
 
+function denyWritePaths() {
+  return DENY_WRITE_PATHS_RAW.map(expandHome);
+}
+
 function effectiveAllowPaths(config, skill) {
   const globalList = (config && config.allow && config.allow.paths) || [];
   const perSkillList = (skill && config && config.per_skill && config.per_skill[skill] && config.per_skill[skill].paths) || [];
@@ -80,13 +99,19 @@ function isPathExplicitlyAllowed(absPath, rawPath, allowSet) {
   return false;
 }
 
-function isPathDenied(rawPath, allowSet) {
+function isPathDenied(rawPath, allowSet, mode) {
   if (!rawPath) return false;
   const abs = path.resolve(expandHome(rawPath));
   if (isPathExplicitlyAllowed(abs, rawPath, allowSet)) return false;
   for (const deny of denyPaths()) {
     if (abs === deny) return true;
     if (abs.startsWith(deny + '/')) return true;
+  }
+  if (mode === 'write') {
+    for (const deny of denyWritePaths()) {
+      if (abs === deny) return true;
+      if (abs.startsWith(deny + '/')) return true;
+    }
   }
   if (path.basename(abs) === '.env') {
     const cwd = process.cwd();
@@ -126,6 +151,7 @@ function findAllMatches(re, str) {
 
 module.exports = {
   DENY_PATHS_RAW,
+  DENY_WRITE_PATHS_RAW,
   DEFAULT_ALLOW_HOSTS,
   INSTALLER_PATTERNS,
   SENSITIVE_VAR_PREFIXES,
@@ -133,6 +159,7 @@ module.exports = {
   HOST_EXTRACT_PATTERNS,
   SECRET_READ_PATTERNS,
   denyPaths,
+  denyWritePaths,
   effectiveAllowPaths,
   effectiveAllowHosts,
   isPathDenied,

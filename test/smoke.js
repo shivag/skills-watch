@@ -137,5 +137,17 @@ section('hook: write-outside-cwd .env is blocked');
 const r21 = decide({ tool_name: 'Write', tool_input: { file_path: '/tmp/some-other-project/.env' } }, '', empty());
 assert(r21.action === 'BLOCK', 'Write stray .env (outside cwd) blocked');
 
+section('demo: every scenario is blocked by decide()');
+const { SCENARIOS } = require('../src/demo');
+for (const s of SCENARIOS) {
+  const r = decide(s.payload, '', empty());
+  assertEq(r.action, 'BLOCK', `demo scenario: ${s.name}`);
+}
+
+section('session-hook: lifetime block counter');
+const sessionHook = require('../src/session-hook');
+assert(typeof sessionHook.countLifetimeBlocks === 'function', 'countLifetimeBlocks is exported');
+assert(typeof sessionHook.countLifetimeBlocks() === 'number', 'countLifetimeBlocks returns a number');
+
 console.log(`\n${passed} passed, ${failed} failed.`);
 process.exit(failed > 0 ? 1 : 0);

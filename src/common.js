@@ -47,6 +47,10 @@ function writeConfig(cfg) {
 }
 
 function readSidecar() {
+  // SKILLS_WATCH_FORCE_SKILL overrides the sidecar (used by demo for determinism).
+  if ('SKILLS_WATCH_FORCE_SKILL' in process.env) {
+    return (process.env.SKILLS_WATCH_FORCE_SKILL || '').trim();
+  }
   try { return fs.readFileSync(SIDECAR_PATH, 'utf8').trim(); }
   catch { return ''; }
 }
@@ -68,6 +72,8 @@ function rotateLogIfNeeded() {
 }
 
 function logLine(line) {
+  // SKILLS_WATCH_NOLOG suppresses log writes (used by demo to avoid polluting live.log).
+  if (process.env.SKILLS_WATCH_NOLOG === '1') return;
   ensureStateDir();
   rotateLogIfNeeded();
   fs.appendFileSync(LOG_PATH, line + '\n');

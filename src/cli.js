@@ -37,6 +37,14 @@ function hookEntries() {
         },
       ],
     },
+    SessionStart: {
+      hooks: [
+        {
+          type: 'command',
+          command: `${HOOK_TAG}-session-hook`,
+        },
+      ],
+    },
   };
 }
 
@@ -69,43 +77,38 @@ function stripOurHook(entry) {
   return Array.isArray(entry) ? kept : kept[0];
 }
 
+function addHookIfAbsent(settings, kind) {
+  if (hasOurHook(settings.hooks[kind])) return false;
+  const existing = settings.hooks[kind];
+  const ours = hookEntries()[kind];
+  if (!existing) settings.hooks[kind] = [ours];
+  else if (Array.isArray(existing)) settings.hooks[kind] = [...existing, ours];
+  else settings.hooks[kind] = [existing, ours];
+  return true;
+}
+
 function install() {
   const settings = readSettings() || {};
   if (!settings.hooks) settings.hooks = {};
 
-  let preChanged = false;
-  let promptChanged = false;
-
-  if (!hasOurHook(settings.hooks.PreToolUse)) {
-    const existing = settings.hooks.PreToolUse;
-    const ours = hookEntries().PreToolUse;
-    if (!existing) settings.hooks.PreToolUse = [ours];
-    else if (Array.isArray(existing)) settings.hooks.PreToolUse = [...existing, ours];
-    else settings.hooks.PreToolUse = [existing, ours];
-    preChanged = true;
-  }
-
-  if (!hasOurHook(settings.hooks.UserPromptSubmit)) {
-    const existing = settings.hooks.UserPromptSubmit;
-    const ours = hookEntries().UserPromptSubmit;
-    if (!existing) settings.hooks.UserPromptSubmit = [ours];
-    else if (Array.isArray(existing)) settings.hooks.UserPromptSubmit = [...existing, ours];
-    else settings.hooks.UserPromptSubmit = [existing, ours];
-    promptChanged = true;
-  }
+  const preChanged = addHookIfAbsent(settings, 'PreToolUse');
+  const promptChanged = addHookIfAbsent(settings, 'UserPromptSubmit');
+  const sessionChanged = addHookIfAbsent(settings, 'SessionStart');
 
   ensureStateDir();
   if (!fs.existsSync(CONFIG_PATH)) writeConfig(readConfig());
 
-  if (preChanged || promptChanged) {
+  if (preChanged || promptChanged || sessionChanged) {
     writeSettings(settings);
     console.log(`skills-watch: installed hooks into ${CLAUDE_SETTINGS}`);
     console.log(`  - PreToolUse → ${HOOK_TAG}-hook${preChanged ? '' : ' (already present)'}`);
     console.log(`  - UserPromptSubmit → ${HOOK_TAG}-prompt-hook${promptChanged ? '' : ' (already present)'}`);
+    console.log(`  - SessionStart → ${HOOK_TAG}-session-hook${sessionChanged ? '' : ' (already present)'}`);
     console.log(`skills-watch: config at ${CONFIG_PATH}`);
     console.log(`skills-watch: live log at ${LOG_PATH}`);
     console.log('');
     console.log('NOTE: Claude Code reads hooks at session start. Start a new Claude Code session for the hook to take effect.');
+    console.log('See it in action before committing:  npx skills-watch demo');
   } else {
     console.log('skills-watch: already installed (no changes).');
   }
@@ -118,17 +121,12 @@ function uninstall() {
     return;
   }
   let changed = false;
-  if (settings.hooks.PreToolUse) {
-    const stripped = stripOurHook(settings.hooks.PreToolUse);
-    if (JSON.stringify(stripped) !== JSON.stringify(settings.hooks.PreToolUse)) changed = true;
-    if (stripped === undefined) delete settings.hooks.PreToolUse;
-    else settings.hooks.PreToolUse = stripped;
-  }
-  if (settings.hooks.UserPromptSubmit) {
-    const stripped = stripOurHook(settings.hooks.UserPromptSubmit);
-    if (JSON.stringify(stripped) !== JSON.stringify(settings.hooks.UserPromptSubmit)) changed = true;
-    if (stripped === undefined) delete settings.hooks.UserPromptSubmit;
-    else settings.hooks.UserPromptSubmit = stripped;
+  for (const kind of ['PreToolUse', 'UserPromptSubmit', 'SessionStart']) {
+    if (!settings.hooks[kind]) continue;
+    const stripped = stripOurHook(settings.hooks[kind]);
+    if (JSON.stringify(stripped) !== JSON.stringify(settings.hooks[kind])) changed = true;
+    if (stripped === undefined) delete settings.hooks[kind];
+    else settings.hooks[kind] = stripped;
   }
   if (changed) {
     writeSettings(settings);
@@ -322,12 +320,17 @@ Usage:
   skills-watch install
   skills-watch uninstall
   skills-watch status
+  skills-watch demo
   skills-watch summary [--since 1h|30m|2d]
   skills-watch allow add        [--for <skill-csv>] <path>
   skills-watch allow add-host   [--for <skill-csv>] <host>
   skills-watch allow remove     [--for <skill-csv>] <path>
   skills-watch allow remove-host [--for <skill-csv>] <host>
   skills-watch allow list
+
+Quick start:
+  npx skills-watch demo       # see 7 simulated attacks get blocked, before you install
+  npx skills-watch install    # install the guard (writes hooks to ~/.claude/settings.json)
 
 After install, start a new Claude Code session for the hook to take effect.
 
@@ -358,6 +361,14 @@ function main(argv) {
     case 'summary':
       summary(rest);
       break;
+    case 'demo': {
+      const { runDemo } = require('./demo');
+      runDemo().then((code) => process.exit(code)).catch((err) => {
+        console.error(`skills-watch demo: ${err && err.message ? err.message : err}`);
+        process.exit(1);
+      });
+      break;
+    }
     case 'allow':
       allow(rest);
       break;
