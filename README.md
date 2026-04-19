@@ -153,7 +153,19 @@ Removes only the `skills-watch-hook` entry from `~/.claude/settings.json`. Leave
 
 ## Status
 
-**v0.2.0 — 2026-04-19.** 78/78 smoke tests pass. Three hooks (PreToolUse + UserPromptSubmit + SessionStart). Five risk categories with 4-line explanation stderr. `WebFetch`/`WebSearch` rebalanced to allow-by-default with `LOUD` first-seen-host audit tag. `demo` subcommand shows the full v0.2 risk-literate UX. Published-ready but awaiting `npm publish` (maintainer task).
+**v0.3.0 — 2026-04-19.** 95/95 smoke tests pass. New `risk` subcommand + [compatibility matrix](./docs/compatibility.md) covering 12 top skills.sh skills. Packaged for `npm publish` (92 KB tarball, zero deps). Adoption-wave launch sequence drafted in `drafts/`.
+
+See the current state of your guard any time:
+
+```
+npx skills-watch risk [--since 1h|30m|2d]
+```
+
+Output is a ≤ 30-line dashboard: total calls, blocks grouped by risk category, first-seen hosts, most-active skill contexts, allow-list summary. No daemon, no tailing — just a reader over the existing live log + config.
+
+### Works with
+
+[`docs/compatibility.md`](./docs/compatibility.md) covers 12 top skills. **10 of 12 work out of the box under v0.2+**, including every first-party `anthropics/skills` (pdf / xlsx / docx / pptx / skill-creator / consolidate-memory / frontend-design) plus `find-skills`. The two exceptions — `tango-research` and `tango-product` — need a one-line per-skill allow for their Gemini key file, and the BLOCKED message tells you exactly what to paste.
 
 Until it lands on npm, try it locally:
 

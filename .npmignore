@@ -1,0 +1,10 @@
+tango/
+drafts/
+scripts/
+test/
+.github/
+.git/
+.gitignore
+.npmignore
+*.log
+.DS_Store

@@ -322,6 +322,7 @@ Usage:
   skills-watch status
   skills-watch demo
   skills-watch summary [--since 1h|30m|2d]
+  skills-watch risk    [--since 1h|30m|2d]
   skills-watch allow add        [--for <skill-csv>] <path>
   skills-watch allow add-host   [--for <skill-csv>] <host>
   skills-watch allow remove     [--for <skill-csv>] <path>
@@ -361,6 +362,11 @@ function main(argv) {
     case 'summary':
       summary(rest);
       break;
+    case 'risk': {
+      const { runRisk } = require('./risk');
+      runRisk(rest);
+      break;
+    }
     case 'demo': {
       const { runDemo } = require('./demo');
       runDemo().then((code) => process.exit(code)).catch((err) => {

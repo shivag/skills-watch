@@ -148,6 +148,46 @@ const sessionHook = require('../src/session-hook');
 assert(typeof sessionHook.countLifetimeBlocks === 'function', 'countLifetimeBlocks is exported');
 assert(typeof sessionHook.countLifetimeBlocks() === 'number', 'countLifetimeBlocks returns a number');
 
+section('risk dashboard: log parsing + rendering');
+const { parseLogLines, renderDashboard, parseDuration } = require('../src/risk');
+const sampleLog = [
+  '2026-04-19T10:00:00.000Z ALLOW LOUD CONNECT docs.foo.io [skill=tango-research]',
+  '2026-04-19T10:00:01.000Z ALLOW CONNECT docs.foo.io [skill=tango-research]',
+  '2026-04-19T10:00:02.000Z BLOCK READ /Users/u/.ssh/id_rsa [risk=SENSITIVE-LEAK] [owasp=LLM02] [atlas=AML.T0024] [skill=bad-skill]',
+  '2026-04-19T10:00:03.000Z ALLOW LOUD CONNECT example.com [skill=tango-product]',
+  '2026-04-19T10:00:04.000Z BLOCK BASH-EGRESS attacker.io [risk=UNAUTHORIZED-EGRESS] [owasp=LLM06] [atlas=AML.T0086] [skill=bad-skill]',
+  '2026-04-19T10:00:05.000Z ALLOW BASH ls -la [skill=tango-research]',
+].join('\n');
+const events = parseLogLines(sampleLog, null);
+assertEq(events.length, 6, 'parse 6 log lines');
+assertEq(events.filter((e) => e.action === 'BLOCK').length, 2, 'parse 2 blocks');
+assertEq(events.filter((e) => e.loud).length, 2, 'parse 2 LOUD events');
+assertEq(events[0].skill, 'tango-research', 'parse skill tag');
+assertEq(events[2].risk, 'SENSITIVE-LEAK', 'parse risk tag');
+
+const dash = renderDashboard(events, { since: null, sinceLabel: null, config: { allow: { paths: [], hosts: [] }, per_skill: {} } });
+assert(dash.startsWith('SKILLS-WATCH RISK: 6 calls, 2 blocked, 2 first-seen hosts'), 'dashboard header correct');
+assert(dash.includes('SENSITIVE-LEAK'), 'dashboard shows SENSITIVE-LEAK');
+assert(dash.includes('UNAUTHORIZED-EGRESS'), 'dashboard shows UNAUTHORIZED-EGRESS');
+assert(dash.includes('docs.foo.io'), 'dashboard shows first-seen host');
+assert(dash.includes('/tango-research'), 'dashboard shows skill context');
+assert(dash.split('\n').length <= 30, 'dashboard <= 30 lines');
+
+assertEq(parseDuration('1h'), 3600000, 'parseDuration 1h');
+assertEq(parseDuration('30m'), 1800000, 'parseDuration 30m');
+assertEq(parseDuration('2d'), 172800000, 'parseDuration 2d');
+assertEq(parseDuration('bogus'), null, 'parseDuration invalid returns null');
+
+section('risk dashboard: --since filter');
+const oldTs = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
+const staleLog = `${oldTs} ALLOW BASH ls -la`;
+const filtered = parseLogLines(staleLog, 60 * 1000); // window = last 1 minute
+assertEq(filtered.length, 0, '--since 1m filters out events older than 1 minute');
+const recentTs = new Date(Date.now() - 30 * 1000).toISOString(); // 30 seconds ago
+const freshLog = `${recentTs} ALLOW BASH ls -la`;
+const inWindow = parseLogLines(freshLog, 60 * 1000);
+assertEq(inWindow.length, 1, '--since 1m keeps events within the last minute');
+
 section('hook: risk-copy.json schema');
 const riskCopy = require('../src/risk-copy.json');
 const required = ['SENSITIVE-LEAK', 'PERSISTENCE-ATTEMPT', 'UNAUTHORIZED-EGRESS', 'SUPPLY-CHAIN', 'INGRESS-EXEC'];
