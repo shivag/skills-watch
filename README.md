@@ -120,7 +120,35 @@ Removes only the `skills-watch-hook` entry from `~/.claude/settings.json`. Leave
 
 ## Status
 
-Pre-build. Rubric approved 2026-04-18 via two rounds of Gemini adversarial critique + one constraint-audit pivot + one acceptance round. Target: v0 in a real outside developer's hands within 14 days of rubric approval (i.e. by 2026-05-02).
+**v0.0.1 alpha — 2026-04-18.** Implementation complete. 32/32 smoke tests pass. **Not yet published to npm.** Try it locally:
+
+```bash
+git clone https://github.com/shivag/skills-watch.git
+cd skills-watch
+npm link           # exposes skills-watch, skills-watch-hook, skills-watch-prompt-hook globally
+skills-watch install
+# ...restart your Claude Code session...
+skills-watch status
+tail -f ~/.skills-watch/live.log    # in a second terminal
+```
+
+Uninstall locally with `npm unlink -g skills-watch` in the repo directory, then `skills-watch uninstall` (which cleans the hook entries from `~/.claude/settings.json`).
+
+Published npm release planned after a few days of dogfooding. Rubric, PRD, and TECH_PLAN were developed in a tango-product session under `tango/2026-04-18_mvp-shape/` — full debate archive is in that folder.
+
+## Development
+
+```bash
+npm test           # runs the smoke suite (no external deps)
+```
+
+Source layout:
+- `bin/skills-watch.js`, `bin/skills-watch-hook.js`, `bin/skills-watch-prompt-hook.js` — entry points
+- `src/cli.js` — all CLI subcommands (install, uninstall, status, summary, allow)
+- `src/hook.js` — `PreToolUse` decision logic (`decide()` is pure-function testable)
+- `src/prompt-hook.js` — `UserPromptSubmit` skill-extraction
+- `src/policy.js` — universal deny-list data + pattern matchers
+- `src/common.js` — shared paths, config I/O, settings.json merge, stdin reader
 
 ## License
 

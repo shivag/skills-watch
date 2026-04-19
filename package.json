@@ -1,0 +1,39 @@
+{
+  "name": "skills-watch",
+  "version": "0.0.1",
+  "description": "A one-time-install safety belt for Claude Code. Guards every tool call against a universal deny-list, with per-skill allow-lists managed by CLI.",
+  "bin": {
+    "skills-watch": "bin/skills-watch.js",
+    "skills-watch-hook": "bin/skills-watch-hook.js",
+    "skills-watch-prompt-hook": "bin/skills-watch-prompt-hook.js"
+  },
+  "main": "src/cli.js",
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "PRD.md",
+    "TECH_PLAN.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/smoke.js"
+  },
+  "keywords": [
+    "claude-code",
+    "security",
+    "sandbox",
+    "hooks",
+    "agent-skills",
+    "skills.sh"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/shivag/skills-watch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shivag/skills-watch.git"
+  },
+  "author": "shivag <249378+shivag@users.noreply.github.com>"
+}
