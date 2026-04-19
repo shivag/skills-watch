@@ -126,3 +126,34 @@ Business rubric items (14-day ship, ≥10 unique user runs, $10/dev/mo team-tier
 - (a) Run Round 3 + constraint audit to further tighten Level 1, or
 - (b) Converge to Phase 2: hoist `arena.md` into `README.md` / `PRD.md` / `TECH_PLAN.md` and start shipping.
 
+---
+
+## Round 3 — Constraint Audit (triggered by user request)
+
+**Trigger:** user question — "When I type `/tango-research` inside Claude Code, can `skills-watch` guard it? How would `/skills-watch /tango-research` work?" — exposed that skills aren't standalone processes; they're instructions an agent follows via its own tool loop. The CLI wrapper design misses the real integration point.
+
+**Critic (Gemini 2.5 Pro):** `constraint_audit_r3.md`.
+
+**Audit results:**
+- **C1.1, C1.2, C2.1, C3.1:** SLACK. No relaxation needed.
+- **C2.2 (dep: skills.sh focus):** 🚨 **BINDING.** Original text targeted the `skills.sh` *install flow*; real value lives in the *agent tool loop*. Current CLI wrapper cannot intercept tool calls. [FRICTION] rubric item flips from PASS (CLI context) to FAIL (agent context).
+- **C3.2 (biz: time-to-ship):** NEAR. 500 LOC CLI is 14-day-achievable but it's the wrong 500 LOC. Hook architecture is ~150-200 LOC and ships faster.
+
+**🚨 Verdict flip:** Relaxing C2.2 to "Claude Code agent tool loop" flips [FRICTION] from FAIL → PASS. User-experience-defining.
+
+**Recommendation:** **Claude Code hook** over policy pack or CLI.
+- CLI: misses the pain entirely.
+- Policy pack (~50 LOC): ships fast but loses the live-observability PAINKILLER — only enforces, doesn't show.
+- **Hook (~150-200 LOC):** satisfies both PAINKILLER items (enforce via SRT + stream live report), realizes FRICTION (one-time install guards every skill forever), de-risks TIME-TO-USER (half the code of the original plan).
+
+**Proposed revisions:**
+- `C2.2`: from "skills.sh install flow" → "Claude Code agent tool loop" (primary), cross-harness expansion as future.
+- `[FRICTION]`: from "one command `npx skills-watch <skill>`" → "one command `npx skills-watch-install`, then every `/skill` guarded".
+- `[PAINKILLER-1 live stream]`: live events streamed to `~/.skills-watch/live.log` (tailable) since hooks can't reliably print to the primary TTY. Open question for Round 4: does Claude Code's hook stderr surface inline to the user? If so, prefer inline; fallback log file only if not.
+
+**Migration impact on arena.md:**
+- `# Product`: rewrite the "one-command experience" around install-once-then-automatic.
+- `# Technical`: replace 5-module CLI architecture with 2-module installer-plus-hook architecture (`bin/skills-watch-install` + `bin/skills-watch-hook`).
+
+**Status: STOPPED per SKILL.md protocol. Awaiting user decision on pivot.**
+
