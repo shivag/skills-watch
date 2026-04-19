@@ -200,3 +200,35 @@ All deferred — Level 1 is ready to ship.
 
 ## Phase 1 complete. Proceeding to Phase 2 convergence.
 
+---
+
+## Phase 2 — Converge
+
+### Final Summary
+
+**Rounds run:** 2 rubric rounds (Gemini R1 + R2), 1 user rubric amendment (R4 gitconfig + git-policy split + escape hatch), 2 Phase-1 arena rounds (Product + Technical, both ACCEPT), 1 constraint audit (R3, 🚨 flip on C2.2), 1 post-pivot triple (R4 REJECT → R4b REJECT → R4c ACCEPT after three surgical fixes).
+
+**Gemini transcripts:** `gemini_round1_raw.md`, `gemini_round2_raw.md`, `gemini_r1_product_raw.md`, `gemini_r2_technical_raw.md`, `constraint_audit_r3.md`, `gemini_r4_pivot_raw.md`, `gemini_r4b_pivot_raw.md`, `gemini_r4c_pivot_raw.md`.
+
+**Levels achieved:** Level 1 complete across all three sub-rubrics (Product / Technical / Business). Level 2 items proposed by Gemini across multiple rounds but deferred per SKILL.md — evolve only when Level 1 genuinely ships.
+
+**Key decisions:**
+- **Constraint pivot (R3):** C2.2 moved from "skills.sh install flow" to "Claude Code agent tool loop." The CLI-wrapper architecture killed; hook architecture adopted. This was the largest single decision and the one the entire rest of the design hinges on.
+- **Enforcement primitive:** pattern-matching at the hook-API boundary (not kernel-enforced). Honest limit named in TECH_PLAN; v1 path to SRT subprocess wrapping preserved.
+- **Escape hatch:** persistent `~/.skills-watch/config.json` managed by `npx skills-watch allow {add|remove|list}`. Env-var-based override explicitly rejected as unverifiable through Claude Code's subprocess boundary.
+- **Observability:** log-file tail (`~/.skills-watch/live.log`) + on-demand `npx skills-watch summary`. Inline streaming infeasible because hooks can't write to the user's TTY.
+- **Scope:** ~200 LOC total, 14 calendar days to v0 in a real outside developer's hands.
+
+**Spikes committed:** 7 in Phase 0 (5 competitor/substrate teardowns + ICP + niche expansion). 5 additional verification spikes enumerated in TECH_PLAN and required before v0 ship; these will be committed during implementation, not debate.
+
+**Deliverables hoisted at Phase 2:**
+- `README.md` (repo root) — ELI12 pitch, install instructions, blocking story, honest limits.
+- `PRD.md` (repo root) — Product section with rubric-trace table at top, spike evidence at bottom.
+- `TECH_PLAN.md` (repo root) — Technical section with rubric-trace + dependency floors + verification spikes required for ship.
+
+**Debate archive preserved:** `tango/2026-04-18_mvp-shape/arena.md`, `rubric.md`, this `debate_log.md`, all raw Gemini transcripts, all spikes, both patch proposals (`patch_r1_product.md`, `patch_r2_technical.md`), and `constraint_audit_r3.md`.
+
+**Next action (outside the Tango session):** start implementation. Write the 5 verification spikes, stand up the `skills-watch` npm package, ship v0 to one outside developer within 14 days. If any verification spike FAILs, re-enter Tango (new session, inherit defeated rubrics) before shipping.
+
+**Session closed 2026-04-18.**
+
