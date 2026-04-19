@@ -20,7 +20,7 @@ Every tool call Claude Code makes now gets checked against a universal deny-list
 npx skills-watch demo
 ```
 
-Runs 7 simulated attacks (all locally generated — nothing leaves your machine) against the real hook binary. You watch each one get blocked with an actionable override command. Install-to-value moment, no commitment.
+Runs 8 simulated attacks (all locally generated — nothing leaves your machine) against the real hook binary. Each block shows the full 4-line explanation: what the skill tried, the risk category, why it's usually bad, when it might actually be fine, and the exact one-line command to allow it. Install-to-value moment, no commitment.
 
 ---
 
@@ -34,14 +34,20 @@ Runs 7 simulated attacks (all locally generated — nothing leaves your machine)
 - **Mid-run package installs:** `pip install`, `npm install`, `curl | sh`, `wget | sh`, etc.
 - **API-key-sniffing commands:** `printenv ANTHROPIC_API_KEY`, `env | grep AWS_*`, and so on.
 
-When something gets blocked, the agent sees the block and tells you in plain language — including the exact one-line command to allow that thing if it was legitimate. If you were in a specific skill when the block fired (e.g. you typed `/tango-research` earlier), the suggested command is **scoped to that skill**, so the allowance doesn't leak to random community skills:
+When something gets blocked, Claude now relays a **4-line risk-literate message** that explains *why* — and gives you an exact one-line command to permanently allow it if it was legitimate. Every block maps to one of five risk categories (`SENSITIVE-LEAK`, `PERSISTENCE-ATTEMPT`, `UNAUTHORIZED-EGRESS`, `SUPPLY-CHAIN`, `INGRESS-EXEC`) — see [docs/risk-categories.md](./docs/risk-categories.md) for the full taxonomy with OWASP/ATLAS mappings. If you were in a specific skill when the block fired (e.g. you typed `/tango-research` earlier), the suggested command is **scoped to that skill**, so the allowance doesn't leak to random community skills:
 
 ```
-BLOCKED: READ /Users/you/.agents/tango.env — to allow for tango-research, run:
-npx skills-watch allow add --for tango-research /Users/you/.agents/tango.env
+BLOCKED: READ /Users/you/.agents/tango.env
+RISK: SENSITIVE-LEAK — The skill tried to read secrets — API keys, SSH keys, git identity, shell history, or environment variables with sensitive prefixes. These enable impersonation, credential theft, or targeted phishing.
+WHEN IT MIGHT BE FINE: A trusted skill you authored yourself that intentionally needs this file. Allow per-skill only; never globally.
+TO ALLOW: npx skills-watch allow add --for tango-research /Users/you/.agents/tango.env
 ```
 
-If no slash command was active, the suggestion is global (applies to every skill). Users default into the tight per-skill scope.
+If no slash command was active, the suggestion is global. Users default into the tight per-skill scope.
+
+### What about `WebFetch`?
+
+As of v0.2, `WebFetch`/`WebSearch` to **any** `http(s)` host is allowed by default — pulling a docs page is harmless. What we still block is the *downstream* behavior an attacker needs for real harm: secret reads, persistence writes, exfil POSTs, mid-run installs, and `curl|sh` chains. First-time egress to any new host gets a `LOUD` tag in `~/.skills-watch/live.log` so you can audit with `grep LOUD`. See [docs/risk-categories.md](./docs/risk-categories.md) for the full threat-model discussion, including the one honest limit (query-string exfil via allowed GETs, which we defeat at the read-side instead of the network-side).
 
 ## Install
 
@@ -147,7 +153,7 @@ Removes only the `skills-watch-hook` entry from `~/.claude/settings.json`. Leave
 
 ## Status
 
-**v0.1.0 — 2026-04-18.** 41/41 smoke tests pass. Three hooks (PreToolUse + UserPromptSubmit + SessionStart). `demo` subcommand. Published-ready but awaiting `npm publish` (maintainer task).
+**v0.2.0 — 2026-04-19.** 78/78 smoke tests pass. Three hooks (PreToolUse + UserPromptSubmit + SessionStart). Five risk categories with 4-line explanation stderr. `WebFetch`/`WebSearch` rebalanced to allow-by-default with `LOUD` first-seen-host audit tag. `demo` subcommand shows the full v0.2 risk-literate UX. Published-ready but awaiting `npm publish` (maintainer task).
 
 Until it lands on npm, try it locally:
 

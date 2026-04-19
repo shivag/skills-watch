@@ -46,8 +46,33 @@ const INSTALLER_PATTERNS = [
   { re: /\bnpm\s+install\b/, label: 'npm install' },
   { re: /\byarn\s+add\b/, label: 'yarn add' },
   { re: /\bpnpm\s+add\b/, label: 'pnpm add' },
-  { re: /\bcurl\b[^|;]*\|\s*sh\b/, label: 'curl|sh' },
-  { re: /\bwget\b[^|;]*\|\s*sh\b/, label: 'wget|sh' },
+];
+
+// Ingress-exec: fetch-and-execute chains. Kept distinct from SUPPLY-CHAIN
+// because semantically different (attacker-controlled URL → immediate execution
+// vs. registry-fetched package → execution).
+const INGRESS_EXEC_PATTERNS = [
+  /\bcurl\b[^|;]*\|\s*sh\b/,
+  /\bcurl\b[^|;]*\|\s*bash\b/,
+  /\bcurl\b[^|;]*\|\s*zsh\b/,
+  /\bcurl\b[^|;]*\|\s*python\d?\b/,
+  /\bcurl\b[^|;]*\|\s*node\b/,
+  /\bwget\b[^|;]*\|\s*sh\b/,
+  /\bwget\b[^|;]*\|\s*bash\b/,
+  /\bchmod\s+\+x\s+\S+\s*(&&|;)\s*\.\//,
+  /\bchmod\s+a?\+x\s+\S+\s*(&&|;)\s*exec\b/,
+];
+
+// Egress with data payload. Indicates active data-sending (exfil shape).
+const EGRESS_DATA_PATTERNS = [
+  /\bcurl\b[^|;]*\s-X\s+(POST|PUT|DELETE|PATCH)\b/i,
+  /\bcurl\b[^|;]*\s--request\s+(POST|PUT|DELETE|PATCH)\b/i,
+  /\bcurl\b[^|;]*\s-d\s+@/,
+  /\bcurl\b[^|;]*\s--data\s+@/,
+  /\bcurl\b[^|;]*\s--data-binary\s+@/,
+  /\bcurl\b[^|;]*\s-F\s+[^=]+=@/,
+  /\bwget\b[^|;]*\s--post-file\b/,
+  /\bwget\b[^|;]*\s--post-data\b/,
 ];
 
 const SENSITIVE_VAR_PREFIXES = /^(AWS_|ANTHROPIC_|OPENAI_|GEMINI_|GOOGLE_|GITHUB_TOKEN|NPM_TOKEN|SSH_)/;
@@ -154,6 +179,8 @@ module.exports = {
   DENY_WRITE_PATHS_RAW,
   DEFAULT_ALLOW_HOSTS,
   INSTALLER_PATTERNS,
+  INGRESS_EXEC_PATTERNS,
+  EGRESS_DATA_PATTERNS,
   SENSITIVE_VAR_PREFIXES,
   VAR_READ_PATTERNS,
   HOST_EXTRACT_PATTERNS,

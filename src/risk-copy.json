@@ -1,0 +1,32 @@
+{
+  "SENSITIVE-LEAK": {
+    "why_usually_bad": "The skill tried to read secrets — API keys, SSH keys, git identity, shell history, or environment variables with sensitive prefixes. These enable impersonation, credential theft, or targeted phishing.",
+    "when_might_be_fine": "A trusted skill you authored yourself that intentionally needs this file. Allow per-skill only; never globally.",
+    "owasp": "LLM02",
+    "atlas": "AML.T0024"
+  },
+  "PERSISTENCE-ATTEMPT": {
+    "why_usually_bad": "The skill tried to write to a shell RC file, cron, or system config that would keep code running after the skill exits. A classic backdoor vector.",
+    "when_might_be_fine": "A legitimate setup skill. Prefer to run the setup step yourself, outside the skill.",
+    "owasp": "LLM04",
+    "atlas": null
+  },
+  "UNAUTHORIZED-EGRESS": {
+    "why_usually_bad": "A skill tried to send data (POST/PUT/DELETE or -d @file) to a host outside our allow-list. This is the shape of exfiltration.",
+    "when_might_be_fine": "A legitimate SaaS API the skill documents. Allow per-skill if you trust the skill with the data it is sending.",
+    "owasp": "LLM06",
+    "atlas": "AML.T0086"
+  },
+  "SUPPLY-CHAIN": {
+    "why_usually_bad": "The skill tried to install packages mid-run (pip/npm/yarn/pnpm). Untrusted code from a package registry can land arbitrary malware on your machine.",
+    "when_might_be_fine": "Never mid-run. Install the dependency yourself, in a setup step outside the skill invocation, so you can inspect what is landing.",
+    "owasp": "LLM03",
+    "atlas": "AML.T0053"
+  },
+  "INGRESS-EXEC": {
+    "why_usually_bad": "The skill tried to fetch content and immediately execute it (curl | sh, wget && chmod +x && ./). This gives whoever controls the fetched URL full control of your machine.",
+    "when_might_be_fine": "Never via this pattern. Download, inspect, then run as separate steps.",
+    "owasp": "LLM01",
+    "atlas": "AML.T0053"
+  }
+}
