@@ -88,3 +88,41 @@ Not integrated — these are Level 2 evolution triggers to revisit after the thr
 - ELI12 rewritten (v1) to reflect concrete UX — command, latency, deny-list specifics, BLOCKED format, local `.git/` stays usable.
 - ELI12 Changelog row v1 added.
 
+### Round 2 — `# Technical` section
+
+**Driver (patch_r2_technical.md):** Populate `# Technical` section with 5-module component breakdown (`bin/skills-watch` + `policy.ts` + `runner.ts` + `formatter.ts` + `summary.ts`, ~500 LOC total), universal policy shape (filesystem / network / env-var / process deny-lists), end-to-end execution flow, verification spike list, and explicit SRT-inherited limits.
+
+**Key defenses in the patch:**
+- **Language choice:** TypeScript (not Python or shell) — simpler-more-powerful because SRT is TS so library import is zero-IPC; users who already have Node for `npx` need no additional runtime.
+- **SRT-bounded design:** no features assume SRT provides syscall filtering or process-deny primitives it doesn't.
+- **Env-var scrubbing is a gap SRT doesn't close** — patch correctly specifies skills-watch does this *before* sandbox entry.
+- **500 LOC / 14-day ship is realistic** — every module under 120 LOC.
+
+**Critic (Gemini 2.5 Pro):** `gemini_r2_technical_raw.md`.
+
+**Verdict: ACCEPT** with one clarification: the process deny-list (blocking `exec` of `pip`, `npm`, `curl`, etc.) is implemented via SRT's `filesystem.denyRead` on the absolute binary paths (since SRT v1 doesn't expose a dedicated `process.denyExec` primitive). Clarification integrated.
+
+**Every rubric item (Product / Technical / Business) PASSES.** Zero ungrounded claims, zero contradictions, zero scope creep, zero vitamins, zero friction added, no simpler alternative, low time-to-user risk.
+
+**Rubric evolution proposal** (Level 2, deferred):
+- Technical L2: lobby SRT for first-class `process.denyExec` primitive; `--backend=nono` abstraction for Landlock-grade isolation.
+- Business L2: opt-in telemetry on which `--allow` / `--allow-host` flags are used most often — drives v1 auto-allow-list feature prioritization.
+
+**Action:**
+- Applied patch to `arena.md` `# Technical` section, with process-deny clarification inline.
+- ELI12 unchanged at user level (Technical internals don't belong in ELI12 by design) — changelog row v2 documents this explicitly.
+
+---
+
+## Phase 1 Status
+
+Both main arena sections populated and ACCEPTED by Gemini:
+- `# Product` — 6/6 Product items covered in narrative, rubric-traced.
+- `# Technical` — 9/9 Technical items architecturally supported; quantitative items (LATENCY-PRIME/WARM, red-team block %) deferred to implementation-phase spikes.
+
+Business rubric items (14-day ship, ≥10 unique user runs, $10/dev/mo team-tier anchor) are build-and-ship-phase verification — not satisfiable from the debate surface alone.
+
+**Next natural checkpoint:** user decides between
+- (a) Run Round 3 + constraint audit to further tighten Level 1, or
+- (b) Converge to Phase 2: hoist `arena.md` into `README.md` / `PRD.md` / `TECH_PLAN.md` and start shipping.
+
