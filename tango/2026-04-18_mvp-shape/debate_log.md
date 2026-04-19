@@ -49,4 +49,42 @@ Verdict: **ACCEPT all 5 surgical patches.** No structural rewrite needed.
 
 ---
 
-## Rubric is now at v3 (Round 1 integration + Round 2 surgical patches). Awaiting user approval to proceed to Phase 1.
+## Rubric v4 (user amendment, 2026-04-18)
+
+User instructed: flip `~/.gitconfig` to deny by default; handle git as a dedicated policy bucket; add explicit escape hatch.
+
+Changes:
+- Added `~/.gitconfig`, `~/.git-credentials`, `~/.config/git/credentials` to filesystem deny-list.
+- Added red-team attacks #6 (read `~/.gitconfig`) and #7 (read `~/.git-credentials`).
+- New Technical item **[GIT POLICY]** — cleanly splits local repo access (allowed) from global identity/credentials (denied) with explicit network fallback for `git push`/`clone`.
+- New Technical item **[ESCAPE HATCH]** — `--allow <path>` + `--allow-host <domain>` CLI flags, per-run only, no persisted config.
+- Updated `[CLARITY actionable BLOCKED]` format: the BLOCKED line now suggests the exact `--allow` flag to retry with, so users recover in one keystroke without reading docs.
+
+Committed as `tango: rubric v4 - gitconfig deny, GIT POLICY split, --allow escape hatch`.
+
+---
+
+## Phase 1
+
+### Round 1 — `# Product` section
+
+**Driver (patch_r1_product.md):** Populate `# Product` section with concrete target user, one-command UX flow, explicit default deny-list and BLOCKED behavior, escape-hatch demonstration, and explicit out-of-scope list.
+
+**Rubric items addressed:** all 6 Product items + C1.1, C1.2, C4 guiding principles, plus supporting Technical (exit code, latency, git policy, escape hatch) in narrative form.
+
+**Critic (Gemini 2.5 Pro):** `gemini_r1_product_raw.md`.
+
+**Verdict: ACCEPT.** Every constraint and every rubric item PASS. Zero ungrounded claims, zero cross-section contradictions, zero scope creep, zero undefended tech choices, zero vitamins, zero friction added, no simpler alternative, no time-to-user risk.
+
+**Rubric evolution proposal** (Level 2, deferred until v0 ships):
+- Product L2: interactive-override prompt on BLOCKED; themed `--allow-profile=git-publish`; team policy via `--policy <url>`.
+- Technical L2: Windows substrate; NoNo as alternate backend via `--backend=nono`.
+- Business L2: first paying team on ≤$10/dev/mo plan; skills.sh "Guarded by" co-brand.
+
+Not integrated — these are Level 2 evolution triggers to revisit after the three Level 1 rubrics PASS end-to-end.
+
+**Action:**
+- Applied patch to `arena.md` `# Product` section.
+- ELI12 rewritten (v1) to reflect concrete UX — command, latency, deny-list specifics, BLOCKED format, local `.git/` stays usable.
+- ELI12 Changelog row v1 added.
+

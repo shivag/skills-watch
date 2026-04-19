@@ -1,15 +1,17 @@
-# ELI12
+# Round 1 Patch Proposal — arena.md `# Product` section
 
-**skills-watch** is a one-command tool that runs any skill from skills.sh under a safety belt. You type `npx skills-watch <owner>/<repo>` — first line of output within 10 seconds on a clean laptop, within a second once it's cached — and while the skill runs you see a live, color-coded stream of every file it reads, every site it connects to, and every program it starts. It blocks the obvious crimes by default: your SSH keys, your AWS creds, your git identity, your shell history, your API-key env vars, any sketchy mid-run `pip install`, and outbound connections to anything outside a tight allow-list of model APIs and core dev infra. When a skill trips the deny-list, it's killed on the spot and the terminal tells you exactly how to re-run with a one-flag override if the action was legitimate. Local `<cwd>/.git/` stays fully usable so skills can still commit into the repo they're working in. Zero config, zero policy-authoring, zero prompts.
+**Target section:** `# Product` in arena.md (currently a stub).
+**Rubric items addressed:** all 6 Product-rubric items + C1.1, C1.2, C4 guiding principles.
+**Spike needed?** No — all quantitative claims are rubric-sourced, not new.
 
-The v0 goal: one real outside developer is running this within 14 days of rubric approval.
+---
 
-# Product
+## Proposed new `# Product` body
 
-## Target user
+### Target user
 A solo developer or small dev-tools team who uses at least one AI coding agent that reads community skills — most commonly Claude Code, Cursor, Codex, Cline, or Gemini CLI — and installs third-party skills from **skills.sh** via `npx skills add <owner>/<repo>`. They are a *builder*, not a security engineer. They have hit the "wait, what does this thing actually do on my laptop?" moment at least once and stalled their skill adoption because of it. [Cites: `C1.1 (mkt: skills.sh community)`, `C1.2 (mkt: builder not security-engineer)`, `spikes/icp.md`.]
 
-## The one-command experience
+### The one-command experience
 The entire v0 UX is a single command prepended to muscle memory the user already has:
 
 ```
@@ -45,7 +47,7 @@ SUMMARY: 4 file reads, 1 network call. 2 actions BLOCKED.
 
 CLI exit code is `0` when no action was blocked, non-zero otherwise — so `skills-watch` composes cleanly into shell pipelines and CI [`Technical: exit code`].
 
-## What skills-watch blocks by default
+### What skills-watch blocks by default
 Without any configuration, a universal deny-list blocks the attacks that almost no legitimate skill needs:
 
 - **Secrets on disk:** `~/.ssh/`, `~/.aws/`, `~/.gnupg/`, `~/.netrc`, `~/.docker/config.json`, `~/.agents/.env`, any stray `.env` outside the current working directory.
@@ -63,7 +65,7 @@ BLOCKED: READ /Users/shiva/.ssh/id_rsa — to allow this run, rerun with: --allo
 
 [`CLARITY actionable BLOCKED`, `PAINKILLER-2`, `PAINKILLER-3`].
 
-## Escape hatch — one flag, per run
+### Escape hatch — one flag, per run
 Some legitimate skills need something on the deny-list. For those, the user passes `--allow <path>` (repeatable) or `--allow-host <domain>` (repeatable):
 
 ```
@@ -72,17 +74,7 @@ npx skills-watch --allow ~/.gitconfig --allow-host api.mysite.com shivag/tango-r
 
 No persisted config, no separate file to edit. Flags are explicit and per-invocation so the user sees exactly what they're opening [`ESCAPE HATCH`].
 
-## Out of scope for v0
+### Out of scope for v0
 - **Interactive skills.** stdin is mapped to EOF by default; any skill that reads stdin will see end-of-file immediately. First run emits a one-time notice: `NOTE: interactive skills that require input are not supported in v0.` Interactive skill support is a v1 conversation [`UX-INTERACTIVE`].
 - **Windows.** SRT does not support Windows; v0 inherits that limit. macOS + Linux only [`C2.1 (dep: SRT)`].
 - **Per-skill persisted allow-lists.** That's NoNo's market. v0 is zero-config; persistence is a v1 demand-driven feature [`C1.2 (mkt: builder not security-engineer)`, `spikes/competitor_nono.md`].
-
-# Technical
-*(Populated during Phase 1. Each claim will cite a rubric item and, for quantitative claims, a spike.)*
-
-# ELI12 Changelog
-
-| Version | After Round | What's new since previous | Why it changed |
-|---|---|---|---|
-| v0 | bootstrap | Initial ELI12 written. | Session start. |
-| v1 | R1 (Product ACCEPT) | ELI12 now says *what you type*, *how fast it starts*, *exactly what the deny-list covers*, *what the BLOCKED message looks like*, and *that local `.git/` still works*. Before this, ELI12 only promised "a safety belt" abstractly. | Product section of arena.md is now concrete and rubric-traced; ELI12 had to reflect that the pitch is now demo-ready. |
