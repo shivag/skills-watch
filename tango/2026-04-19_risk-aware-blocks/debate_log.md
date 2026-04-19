@@ -50,6 +50,23 @@ All 4 R1 criticism categories PASS. Deep-dive checks all green:
 
 **Deferred to v0.3.** v0.2 ships the rebalance + 5-category taxonomy only.
 
-## Phase 0 Status: AWAITING USER APPROVAL
+## Phase 0 → user approval + amendments
 
-Before Phase 1 (arena-section population rounds) begins, user must approve the v0.2 rubric.
+User approved the Phase-0 rubric with three amendments (logged in rubric.md "User amendments"): (1) rename `SENSITIVE-DATA-READ` → `SENSITIVE-LEAK`; (2) adopt the `LOUD`-log proposal (first-seen host gets `LOUD` tag in live.log); (3) intellectually honest documentation of the URL-exfil limit (blocked at the read-side, not the egress-side). Committed as rubric v3.
+
+## Phase 1 Round 1 — combined Product + Technical arena patch
+
+`patch_r1_arena.md` drafts both Product and Technical sections in one pass (feature-patch scope; debate surface stays tight).
+
+**Critic (Gemini Phase-1 R1):** `gemini_phase1_r1_raw.md`.
+
+**Verdict: ACCEPT.** Every constraint + every Product / Technical / Business rubric item PASSES. Zero ungrounded claims, zero contradictions, zero scope creep, no vitamins except a "good" one (LOUD observability — zero-friction, cheap). `risk-copy.json` content reviewed and approved including the `null` ATLAS code on `PERSISTENCE-ATTEMPT` as "intellectually honest" because there's no clean ATLAS mapping.
+
+**One clarification:** `WebFetch file://` had been classified as `PERSISTENCE-ATTEMPT` which was wrong. Fixed inline in the patch + arena body: now `SENSITIVE-LEAK` (any `file://` from a skill is suspicious local file access).
+
+**Action:**
+- Applied patch to `arena.md` Product + Technical sections.
+- ELI12 updated (v1) to describe 5 categories by name + LOUD tag + 4-line BLOCKED shape.
+- Changelog row v1 added.
+
+## Phase 1 complete. Level 1 ready for Phase 2 convergence.
