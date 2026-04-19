@@ -157,3 +157,46 @@ Business rubric items (14-day ship, ≥10 unique user runs, $10/dev/mo team-tier
 
 **Status: STOPPED per SKILL.md protocol. Awaiting user decision on pivot.**
 
+## Pivot approved 2026-04-18
+User: "yes" — execute the pivot with "make it easy and automatic for the user if possible."
+
+Actions taken:
+- Verified Claude Code hook API via claude-code-guide agent: exit 0 (allow), exit 2 (block with stderr fed to Claude), hooks can't stream mid-tool, no SessionEnd event. Live-log-tail pattern confirmed as the correct observability approach.
+- Rewrote `rubric.md`: flipped C2.1 (dep: SRT → dep: Claude Code hook API); flipped C2.2 (skills.sh install flow → Claude Code agent tool loop); rewrote all Product + Technical items around the hook architecture; deprecated pre-pivot items into Defeated Rubrics with explicit R3-pivot tags.
+- Rewrote `arena.md`: new ELI12 around "install-once, then every skill guarded"; Product section around `npx skills-watch install` one-command UX; Technical section around 2 components (installer CLI + hook) totalling ~200 LOC.
+
+### Round 4 — combined critique of post-pivot rewrite (`gemini_r4_pivot_raw.md`)
+
+**Verdict: REJECT.** Three surgical failures found:
+1. **Env-var scrubbing is impossible in the hook model.** Hooks see tool-call payloads, not the subprocess environment. "Scrub" language was a ghost feature carried over from the SRT design.
+2. **`SessionEnd` hook doesn't exist.** The [CLARITY — session summary] item as written was unimplementable.
+3. **Env-var-based escape hatch was unverified.** The assumption that `SKILLS_WATCH_ALLOW=... claude-code` propagates to the hook subprocess was never proven and may not hold.
+
+Suggestions: spike env-var propagation; replace SessionEnd with a `summary` CLI that post-processes the log; replace env-var escape hatch with a config-file + CLI-managed allow-list.
+
+**Fixes applied:**
+- Env-var scrub → [PAINKILLER — env-var read detection]: hook pattern-matches `printenv $SECRET` etc. in Bash command strings. Honest limit named: base64-encoded variants slip through, v1 adds SRT subprocess wrapping as a second layer.
+- SessionEnd SUMMARY → `npx skills-watch summary [--since <duration>]` CLI subcommand that post-processes `~/.skills-watch/live.log`.
+- Env-var escape hatch → persistent `~/.skills-watch/config.json` + `npx skills-watch allow {add|add-host|remove|remove-host|list}` subcommands. Installer CLI ships with these. Config file is the single source of truth.
+
+### Round 4b — re-critique (`gemini_r4b_pivot_raw.md`)
+
+**Verdict: REJECT.** Narrow but fatal: three stale references to the old escape-hatch mechanism survived the fixes — one in Product-section text (`set env: SKILLS_WATCH_ALLOW=...`), one in the Technical-section flow example, one in the Product rubric's [CLARITY — actionable BLOCKED] item (`rerun with: --allow <path>`). The technical design was sound but the user-facing spec told a contradictory story.
+
+**Fixes applied:** normalized all three references to the `npx skills-watch allow {add|add-host} <arg>` syntax.
+
+### Round 4c — re-critique (`gemini_r4c_pivot_raw.md`)
+
+**Verdict: ACCEPT.** Every constraint + every Product / Technical / Business rubric item PASS. Zero ungrounded claims, zero contradictions, zero scope creep. Security claims honestly bounded ("pattern-matching is defeatable, v0 accepts the trade"). Escape hatch preemptively de-risked. 14-day time-to-user credible at ~200 LOC.
+
+**Rubric evolution proposed (Level 2, deferred):**
+- Technical: SRT subprocess wrapping as a second enforcement layer; Cursor / Codex / Cline / Gemini CLI integrations.
+- Product: per-skill trust profiles; team shared allow-lists.
+- Business: opt-in telemetry on `allow add` to drive v1 auto-profile prioritization.
+
+All deferred — Level 1 is ready to ship.
+
+---
+
+## Phase 1 complete. Proceeding to Phase 2 convergence.
+
