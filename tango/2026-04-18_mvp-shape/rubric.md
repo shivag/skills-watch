@@ -20,14 +20,15 @@
 - [ ] **[FRICTION]** From "I have Claude Code installed" to "my next `/skill` command is guarded" is **one command** (`npx skills-watch install`) and **zero prompts**. After that, every subsequent skill invocation inside Claude Code is guarded automatically — nothing to prepend, nothing to configure. No login, no account, no API key. *Verifiable by new-user walkthrough: run the install, invoke a red-team skill in Claude Code, observe block.*
 - [ ] **[CLARITY — summary CLI]** `npx skills-watch summary` post-processes `~/.skills-watch/live.log` and prints the session-most-recent summary: `SUMMARY: N tool calls, K BLOCKED (since <iso8601>)`. Accepts `--since <duration>` (e.g. `--since 1h`) to window the summary. *Verifiable by spike: run a known sequence of tool calls, then `skills-watch summary --since 10m` returns the expected counts.* — *Replaces the impossible `SessionEnd` hook approach flagged in R4; Claude Code's hook API has PreToolUse / PostToolUse / UserPromptSubmit / SessionStart but no SessionEnd.*
 - [ ] **[CLARITY — log format]** Each line in `~/.skills-watch/live.log` has format `<iso8601> <VERB> <OBJECT>` for allowed actions and `<iso8601> BLOCKED <VERB> <OBJECT>` for denied. Users can `grep BLOCKED` to audit or `tail -f` to observe live. *Verifiable by format spec.*
-- [ ] **[CLARITY — actionable BLOCKED]** Every stderr message the hook emits on block states exactly what was blocked AND the exact one-line CLI command to permanently allow it. Format: `BLOCKED: [ACTION] [OBJECT] — to allow, run: npx skills-watch allow {add <path> | add-host <domain>}`. Because the hook's stderr is surfaced via Claude's response (not raw), Claude will naturally relay both the block and the override command to the user. *Verifiable by red-team spike: observe Claude's user-visible response contains the `npx skills-watch allow add …` command verbatim.*
+- [ ] **[CLARITY — actionable BLOCKED]** Every stderr message the hook emits on block states exactly what was blocked AND the exact one-line CLI command to permanently allow it. When a skill context is known (sidecar non-empty), the suggested command is skill-scoped: `BLOCKED: [ACTION] [OBJECT] — to allow for tango-research, run: npx skills-watch allow add --for tango-research <path>`. When no skill context is known, the suggestion falls back to the global form: `... to allow globally, run: npx skills-watch allow add <path>`. Because the hook's stderr is surfaced via Claude's response, Claude will relay both the block and the override command to the user. *Verifiable by red-team spike: with skill context set, observe `--for tango-research` in response; without, observe global form.*
 - [ ] **[UX-INSTALL]** `npx skills-watch install` is idempotent: running it twice is a no-op on the second run, and it never silently overwrites an existing `hooks` block in `~/.claude/settings.json`. If the user already has competing hooks, the installer asks once for confirmation, then merges. *Verifiable by spike: install twice → second run outputs `already installed`.*
 
 # 🎯 Technical Rubric (Level 1)
 *Engineering binary pass/fail. What must be true for the system to actually work?*
 
-- [ ] **[HOOK-INSTALL]** `npx skills-watch install` writes a `PreToolUse` hook entry to `~/.claude/settings.json` that invokes `skills-watch-hook` on every `Bash`, `Read`, `Write`, `Edit`, `WebFetch`, `WebSearch` tool call. Install is idempotent and preserves any pre-existing hooks. *Verifiable by diff of `~/.claude/settings.json` before and after a double-install.*
-- [ ] **[HOOK-DECISION]** The hook parses the tool-call JSON payload (tool name + args), applies the universal deny-list as pattern checks, and returns exit 0 (allow) or exit 2 with stderr (block). *Verifiable by unit test: given a payload JSON, assert expected exit code + stderr.*
+- [ ] **[HOOK-INSTALL]** `npx skills-watch install` writes TWO hook entries to `~/.claude/settings.json`: a `PreToolUse` hook pointing at `skills-watch-hook` (for every `Bash`, `Read`, `Write`, `Edit`, `WebFetch`, `WebSearch` tool call), and a `UserPromptSubmit` hook pointing at `skills-watch-prompt-hook` (for skill-context tracking). Install is idempotent and preserves any pre-existing hooks. *Verifiable by diff of `~/.claude/settings.json` before and after a double-install.*
+- [ ] **[HOOK-DECISION]** The `PreToolUse` hook parses the tool-call JSON payload (tool name + args), reads `~/.skills-watch/current-skill` sidecar for skill context (if present), applies the universal deny-list + the effective allow-list (global + per-skill) as pattern checks, and returns exit 0 (allow) or exit 2 with stderr (block). *Verifiable by unit test: given a payload JSON + a sidecar value, assert expected exit code + stderr.*
+- [ ] **[SKILL CONTEXT]** A second hook — `UserPromptSubmit` — fires on every user message, extracts the first slash-command from the `prompt` field via regex `^/(\S+)(\s|$)`, and writes the skill name (or empty string) to `~/.skills-watch/current-skill`. If the user message has no slash command, the sidecar is left unchanged (preserving the last known skill context for follow-up prompts). *Verifiable by spike: simulate a sequence of user messages (with and without slash commands), assert sidecar contents after each.*
 - [ ] **[FILE DENY]** The hook denies any `Read` / `Write` / `Edit` tool call targeting: `~/.ssh/`, `~/.aws/`, `~/.gnupg/`, `~/.netrc`, `~/.docker/config.json`, `~/.agents/.env`, `~/.zsh_history`, `~/.bash_history`, `~/.gitconfig`, `~/.git-credentials`, `~/.config/git/credentials`, or any `.env` outside the current working directory. *Verifiable by spike: 11 red-team `Read` calls, all get exit 2.*
 - [ ] **[GIT POLICY]** Git access is split cleanly:
   - **Allow:** `Read` / `Write` on `<cwd>/.git/` (legit skill commits into the current repo).
@@ -36,11 +37,25 @@
   *Verifiable by red-team spike: skill can `git add/commit` in cwd but CANNOT read user's global identity.*
 - [ ] **[NET DENY]** The hook denies `WebFetch` / `WebSearch` / `Bash` tool calls targeting hosts not on the network allow-list: `*.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `github.com`, `pypi.org`, `registry.npmjs.org`. For `Bash`, the hook regex-matches common egress patterns (`curl`, `wget`, `git push`, etc.) and extracts the destination host. *Verifiable by spike: `WebFetch https://example.com` → exit 2; `Bash curl example.com` → exit 2.*
 - [ ] **[BASH DENY]** The hook denies `Bash` tool calls whose command string invokes `pip`, `pip3`, `npm`, `yarn`, `pnpm` with `install`/`add` verbs, or contains `curl ... | sh` / `wget ... | sh` patterns. *Verifiable by red-team spike.*
-- [ ] **[ESCAPE HATCH]** `~/.skills-watch/config.json` holds the persistent allow-list (`allow_paths: [...]`, `allow_hosts: [...]`). Managed via three CLI subcommands, all idempotent:
-  - `npx skills-watch allow add <path>` / `add-host <domain>`
-  - `npx skills-watch allow remove <path>` / `remove-host <domain>`
-  - `npx skills-watch allow list`
-  On block, the stderr names the exact `skills-watch allow add` command the user can run. The config file is the single source of truth — no fragile reliance on environment-variable propagation through Claude Code's subprocess boundary. *Verifiable by spike: `skills-watch allow add ~/.gitconfig`, re-run blocked action, observe allow.*
+- [ ] **[ESCAPE HATCH]** `~/.skills-watch/config.json` holds the persistent allow-list, with both a global tier and a per-skill tier:
+  ```json
+  {
+    "allow": { "paths": [...], "hosts": [...] },
+    "per_skill": {
+      "tango-research": { "paths": [...], "hosts": [...] },
+      "tango-product":  { "paths": [...], "hosts": [...] }
+    }
+  }
+  ```
+  Managed via idempotent CLI:
+  - `npx skills-watch allow add <path>` (global) / `add --for <skill1>,<skill2> <path>` (per-skill)
+  - `npx skills-watch allow add-host <domain>` / `add-host --for <skills> <domain>`
+  - `npx skills-watch allow remove [--for <skills>] <path>` / `remove-host`
+  - `npx skills-watch allow list` — shows both tiers.
+
+  The effective allow-list for any given tool call is `allow.paths ∪ per_skill[current_skill].paths` (and same for hosts). `current_skill` is read from `~/.skills-watch/current-skill` sidecar, written by the `UserPromptSubmit` hook (see `[SKILL CONTEXT]`). If no skill context is known (user didn't invoke a slash command recently), only the global tier applies.
+
+  On block, the stderr names the exact `skills-watch allow add` command — scoped to the current skill if one is known, unscoped global otherwise. *Verifiable by spike: install both global and per-skill allowances, confirm only per-skill applies to matching skill and only global applies otherwise.*
 - [ ] **[LIVE LOG]** Every hook invocation (allow or deny) appends one line to `~/.skills-watch/live.log` in the format `<ISO8601> [ALLOW|BLOCK] <TOOL> <OBJECT>`. File is truncated once it exceeds 10 MB. *Verifiable by spike: invoke 3 tool calls, diff log tail against expected lines.*
 - [ ] **[LATENCY]** Hook wall-clock overhead per tool call ≤ **20 ms** on a 2023-era laptop. (Rubric latency floor is the user-perceived lag; anything ≤ 20 ms is sub-perceptible and won't noticeably slow the agent.) *Verifiable by `spikes/perf_hook.py`: run 1000 benign tool calls with and without the hook installed, compare.*
 - [ ] **[DISTRIBUTION]** Installed via `npx skills-watch install` with no required global install and no pre-install configuration. Uninstalled via `npx skills-watch uninstall` which cleanly removes the hook entry. *Verifiable by clean-laptop install + uninstall walkthrough.*

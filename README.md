@@ -13,11 +13,14 @@ Run `npx skills-watch install` once. After that, every skill you invoke in Claud
 - **Mid-run package installs:** `pip install`, `npm install`, `curl | sh`, `wget | sh`, etc.
 - **API-key-sniffing commands:** `printenv ANTHROPIC_API_KEY`, `env | grep AWS_*`, and so on.
 
-When something gets blocked, the agent sees the block and tells you in plain language — including the exact one-line command to permanently allow that thing if it was legitimate:
+When something gets blocked, the agent sees the block and tells you in plain language — including the exact one-line command to allow that thing if it was legitimate. If you were in a specific skill when the block fired (e.g. you typed `/tango-research` earlier), the suggested command is **scoped to that skill**, so the allowance doesn't leak to random community skills:
 
 ```
-BLOCKED: READ /Users/you/.gitconfig — to allow, run: npx skills-watch allow add /Users/you/.gitconfig
+BLOCKED: READ /Users/you/.agents/tango.env — to allow for tango-research, run:
+npx skills-watch allow add --for tango-research /Users/you/.agents/tango.env
 ```
+
+If no slash command was active, the suggestion is global (applies to every skill). Users default into the tight per-skill scope.
 
 ## Install
 
@@ -25,7 +28,7 @@ BLOCKED: READ /Users/you/.gitconfig — to allow, run: npx skills-watch allow ad
 npx skills-watch install
 ```
 
-Idempotent. Writes a `PreToolUse` hook to `~/.claude/settings.json` and creates `~/.skills-watch/config.json` for your allow-list. Preserves any pre-existing Claude Code hooks.
+Idempotent. Writes two hooks to `~/.claude/settings.json` — a `PreToolUse` hook (for enforcement) and a `UserPromptSubmit` hook (for per-skill context tracking) — and creates `~/.skills-watch/config.json` for your allow-list. Preserves any pre-existing Claude Code hooks. **After install, start a new Claude Code session** (Claude Code reads hooks at session start; the current session will run unguarded until it exits).
 
 ## Usage
 
@@ -64,12 +67,35 @@ SUMMARY: 47 tool calls, 2 BLOCKED (since 2026-04-18T16:41:00Z)
 
 ### Managing the allow-list
 
+The allow-list has **two tiers**: global (applies to every skill) and per-skill (applies only when that slash command is active).
+
 ```
+# Global — applies to every skill you invoke
 npx skills-watch allow add ~/.gitconfig
 npx skills-watch allow add-host api.mysite.com
-npx skills-watch allow remove ~/.gitconfig
+
+# Per-skill — applies only while that skill is the active slash command
+npx skills-watch allow add --for tango-research,tango-product ~/.agents/tango.env
+npx skills-watch allow add-host --for tango-research generativelanguage.googleapis.com
+
 npx skills-watch allow list
+npx skills-watch allow remove --for tango-research ~/.agents/tango.env
 ```
+
+Per-skill scoping works because skills-watch installs two hooks: `UserPromptSubmit` captures the slash command you typed into `~/.skills-watch/current-skill`; `PreToolUse` reads that sidecar to know which per-skill allow-list to union with the global one. Follow-up messages without a slash command keep the last known skill context, so a long tango session stays correctly scoped.
+
+When a skill is blocked by the deny-list, the `BLOCKED` message in Claude's response includes the exact per-skill command to allow it — e.g. `npx skills-watch allow add --for tango-research ~/.agents/tango.env`. One keystroke from the error to the fix, with the tight scope pre-filled.
+
+### Works with tango-research and tango-product
+
+Both tango skills (v1.0.0+) prefer `~/.agents/tango.env` for their Gemini API key (falling back to `~/.agents/.env` for existing users). After installing skills-watch, allow the tango key only for tango-family skills:
+
+```
+npx skills-watch install
+npx skills-watch allow add --for tango-research,tango-product ~/.agents/tango.env
+```
+
+Tango works normally; a random community skill cannot read your Gemini key.
 
 ## Uninstall
 

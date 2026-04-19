@@ -14,7 +14,7 @@ Source: hoisted from `tango/2026-04-18_mvp-shape/arena.md` at Phase 2 convergenc
 | Universal deny-list blocks obvious crimes | `[PAINKILLER — block-on-use]`, `[FILE DENY]`, `[NET DENY]`, `[BASH DENY]`, `[GIT POLICY]` |
 | API-key-sniffing commands are detected | `[PAINKILLER — env-var read detection]` |
 | Blocked actions surface an actionable override | `[CLARITY — actionable BLOCKED]` |
-| Escape hatch is a persistent, CLI-managed allow-list | `[ESCAPE HATCH]` |
+| Escape hatch is a two-tier CLI-managed allow-list (global + per-skill) | `[ESCAPE HATCH]`, `[SKILL CONTEXT]` |
 | Session counts are on-demand via CLI | `[CLARITY — summary CLI]` |
 | v0 targets Claude Code specifically | `C2.2 (dep: Claude Code agent tool loop)` |
 | v0 is free for solo use | `C3.1 (biz: v0 GTM)` |
@@ -88,22 +88,49 @@ Claude Code feeds this stderr to Claude as an error. Claude relays it to the use
 
 ---
 
-## Escape hatch — a persistent allow-list, managed by CLI
+## Escape hatch — a two-tier allow-list, managed by CLI
 
-When a skill legitimately needs something on the deny-list, the user runs a one-line command:
+The allow-list has **two tiers**: **global** (applies to every skill) and **per-skill** (applies only when a specific slash command is active). All managed via CLI, all idempotent:
 
 ```
+# Global — applies to every skill you invoke
 npx skills-watch allow add ~/.gitconfig
 npx skills-watch allow add-host api.mysite.com
-npx skills-watch allow list
-npx skills-watch allow remove ~/.gitconfig
+
+# Per-skill — applies only while that skill's slash command is the active context
+npx skills-watch allow add --for tango-research,tango-product ~/.agents/tango.env
+npx skills-watch allow add-host --for tango-research generativelanguage.googleapis.com
+
+npx skills-watch allow list        # shows both tiers, grouped
+npx skills-watch allow remove --for tango-research ~/.agents/tango.env
 ```
 
-The allow-list is stored at `~/.skills-watch/config.json` and read by the hook on every invocation. No env-var-propagation dependency (investigated and rejected as too fragile). The trade-off: allow-list persists across sessions (users who grant `~/.gitconfig` once need to remember to remove it later if they want strict default again), but reliability wins. Scope is always user-wide — no per-skill or per-session granularity in v0.
+**How skill-context works.** skills-watch installs two hooks, not one. `UserPromptSubmit` fires on every user message and — if the user's text starts with a slash command — extracts the skill name (`tango-research`, `tango-product`, etc.) into `~/.skills-watch/current-skill`. `PreToolUse` reads that sidecar on every subsequent tool call to know which per-skill allow-list to union with the global one. If the user follows up without a slash command (`continue`, `also do X`), the sidecar stays at the last skill — so the entire sub-session stays correctly scoped.
 
-When the hook blocks a tool call, the BLOCKED stderr message names the exact `npx skills-watch allow add …` command the user can run to unblock — one copy-paste from a "no" to a "yes".
+**BLOCKED messages are context-aware.** When the hook fires inside a known skill, the suggested override is per-skill:
 
-*Cites: `[ESCAPE HATCH]`.*
+```
+BLOCKED: READ /Users/shiva/.agents/tango.env — to allow for tango-research, run:
+npx skills-watch allow add --for tango-research /Users/shiva/.agents/tango.env
+```
+
+When no slash command is active, the suggestion is global. Users default into the tight scope — the unsafe "allow everything everywhere" is one extra keystroke away.
+
+**The tradeoff:** allow-list persists across sessions (grant-and-forget means users should `allow remove` when they want strict posture back), but the reliability wins over the investigated-and-rejected env-var magic (which was unverifiable through Claude Code's subprocess boundary).
+
+*Cites: `[ESCAPE HATCH]`, `[SKILL CONTEXT]`, `[CLARITY — actionable BLOCKED]`.*
+
+## Compatibility notes
+
+**With tango-research and tango-product** (v1.0.0+): both tango skills now prefer `~/.agents/tango.env` for their Gemini API key (falling back to `~/.agents/.env` for existing users). Run once after install:
+
+```
+npx skills-watch allow add --for tango-research,tango-product ~/.agents/tango.env
+```
+
+Only the Tango skills can now read that file; a random community skill can't.
+
+**With any other skill that needs a specific secret file.** The same pattern applies: put the skill-specific secret in its own file, `--for <skill>` allow that file, keep the global deny-list tight.
 
 ---
 

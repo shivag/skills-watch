@@ -34,12 +34,13 @@ v0 is bounded by these dependencies. Relaxing any requires changing the product,
 
 ## Architecture at a glance
 
-Two components, distributed as one npm package (`skills-watch`):
+Three components, distributed as one npm package (`skills-watch`):
 
-- **`bin/skills-watch`** — the management CLI. Subcommands: `install`, `uninstall`, `status`, `summary [--since <duration>]`, `allow {add|add-host|remove|remove-host|list}`.
-- **`bin/skills-watch-hook`** — the hook binary Claude Code invokes before every tool call. Reads the tool-call JSON on stdin, applies the universal deny-list plus the user's `~/.skills-watch/config.json` allow-list, writes to `~/.skills-watch/live.log`, exits 0 or 2.
+- **`bin/skills-watch`** — the management CLI. Subcommands: `install`, `uninstall`, `status`, `summary [--since <duration>]`, `allow {add|add-host|remove|remove-host|list} [--for <skill-csv>]`.
+- **`bin/skills-watch-hook`** — the `PreToolUse` hook binary. Reads the tool-call JSON on stdin, reads `~/.skills-watch/current-skill` sidecar for active-skill context, applies the universal deny-list plus the effective allow-list (global ∪ per-skill), writes to `~/.skills-watch/live.log`, exits 0 or 2.
+- **`bin/skills-watch-prompt-hook`** — the `UserPromptSubmit` hook binary. Reads the user-message JSON on stdin, regex-extracts the first slash command from the `prompt` field (if present), writes the skill name to `~/.skills-watch/current-skill`. Always exits 0 — never blocks.
 
-Total ~150–200 LOC across both. No daemon. No state beyond two files.
+Total ~230–270 LOC across all three. No daemon. State limited to `~/.skills-watch/{live.log, config.json, current-skill}` and `~/.claude/settings.json`.
 
 *Cites: `[DISTRIBUTION]`, `C3.2`.*
 
@@ -49,13 +50,30 @@ Total ~150–200 LOC across both. No daemon. No state beyond two files.
 
 ### Subcommands
 
-- **`install`** — reads `~/.claude/settings.json` (creating if absent), merges in a `hooks.PreToolUse` entry pointing at `skills-watch-hook`, preserves any pre-existing hook entries, writes atomically. Also creates `~/.skills-watch/config.json` with an empty allow-list if absent. Idempotent: second run outputs `already installed`. *Cites: `[HOOK-INSTALL]`, `[UX-INSTALL]`.*
-- **`uninstall`** — removes only the `skills-watch-hook` entry; leaves other hooks intact. Does not delete `~/.skills-watch/config.json` (allow-list preserved in case of reinstall).
-- **`status`** — prints whether the hook is installed, the live-log path, and the effective allow-list.
+- **`install`** — reads `~/.claude/settings.json` (creating if absent), merges in two hook entries (`hooks.PreToolUse` → `skills-watch-hook`; `hooks.UserPromptSubmit` → `skills-watch-prompt-hook`), preserves any pre-existing hooks, writes atomically. Also creates `~/.skills-watch/config.json` with empty global + empty `per_skill` dict if absent. Idempotent: second run outputs `already installed`. *Cites: `[HOOK-INSTALL]`, `[UX-INSTALL]`.*
+- **`uninstall`** — removes only the two `skills-watch-*` entries; leaves other hooks intact. Preserves `~/.skills-watch/config.json` (allow-list and current-skill sidecar preserved across reinstalls).
+- **`status`** — prints whether both hooks are installed, the live-log path, the current-skill sidecar value, and the effective allow-list grouped by tier.
 - **`summary [--since <duration>]`** — reads `~/.skills-watch/live.log`, prints `SUMMARY: N tool calls, K BLOCKED (since <iso8601>)`. Default window is "since last SessionStart event"; `--since 1h` / `30m` / `2d` windows by duration. *Cites: `[CLARITY — summary CLI]`.*
-- **`allow {add|add-host|remove|remove-host|list}`** — reads / mutates `~/.skills-watch/config.json`. Validates path existence and host format. All idempotent.
+- **`allow {add|add-host|remove|remove-host|list} [--for <skill-csv>]`** — reads / mutates `~/.skills-watch/config.json`. Optional `--for <csv>` scopes the operation to one or more specific skills; absent, the operation applies to the global tier. `list` prints both tiers. All idempotent.
 
-~120 LOC. Node's built-in `fs` + `path`; no external deps.
+~150 LOC. Node's built-in `fs` + `path`; no external deps.
+
+## The `UserPromptSubmit` hook (`bin/skills-watch-prompt-hook`)
+
+### Input
+Claude Code invokes this hook before processing every user message, with JSON on stdin:
+```json
+{"session_id": "...", "cwd": "...", "hook_event_name": "UserPromptSubmit", "prompt": "/tango-research design a passive regulator"}
+```
+
+### Pipeline
+1. Parse stdin JSON.
+2. Regex match the `prompt` field against `/^\/(\S+)(\s|$)/`.
+3. If matched: atomically write capture group 1 (skill name) to `~/.skills-watch/current-skill`.
+4. If not matched: leave sidecar unchanged (preserves last known skill for follow-up prompts).
+5. Exit 0 unconditionally — this hook is observational, never blocks.
+
+~15 LOC. *Cites: `[SKILL CONTEXT]`.*
 
 ---
 
@@ -76,13 +94,14 @@ Claude Code invokes the hook with a JSON payload on stdin, e.g.:
 ### Pipeline
 
 1. Parse stdin JSON.
-2. Load allow-overrides from `~/.skills-watch/config.json` (or use empty lists if file absent).
-3. Apply deny-list pattern checks in this order:
+2. Read `~/.skills-watch/current-skill` sidecar (empty string if absent) — this is the active skill context written by `skills-watch-prompt-hook`.
+3. Load allow-lists from `~/.skills-watch/config.json`. Compute the effective allow-list for this call: `allow.paths ∪ per_skill[current_skill].paths` (and same for hosts). If `current_skill` is empty, only the global tier applies.
+4. Apply deny-list pattern checks in this order:
    - **Filesystem path match** (`Read` / `Write` / `Edit` / `MultiEdit`): expand `~`, canonicalize, check against deny-list regex unless overridden.
    - **Network host match** (`WebFetch` / `WebSearch`): extract host, check against allow-list unless overridden.
    - **Bash command pattern match** (`Bash`): three regex groups — (a) mid-run installer patterns, (b) egress with host extraction, (c) secret-path patterns in `cat`/`less`/`head` etc., (d) env-var-read patterns (`printenv $SECRET`, `echo $SECRET`, `env | grep SECRET`) for the sensitive-var prefix list.
-4. If any check denies: append `<iso8601> BLOCK <TOOL> <OBJECT>` to `~/.skills-watch/live.log`, print the formatted BLOCKED message (including the `npx skills-watch allow add …` override) to stderr, exit 2.
-5. If all checks pass: append `<iso8601> ALLOW <TOOL> <OBJECT>` to live log, exit 0.
+5. If any check denies: append `<iso8601> BLOCK <TOOL> <OBJECT> [skill=<current_skill>]` to `~/.skills-watch/live.log`, print the formatted BLOCKED message to stderr (including the `npx skills-watch allow add [--for <current_skill>] …` override — scoped to the active skill if context is known, global otherwise), exit 2.
+6. If all checks pass: append `<iso8601> ALLOW <TOOL> <OBJECT> [skill=<current_skill>]` to live log, exit 0.
 
 ~120 LOC. No dependencies beyond Node built-ins.
 
@@ -136,12 +155,13 @@ github.com         pypi.org          registry.npmjs.org
 ## Flow: what happens when the user invokes a skill
 
 1. User types `/tango-research <goal>` in Claude Code.
-2. Claude reads `tango-research/SKILL.md`, decides to call `Bash` to run a Python script.
-3. Claude Code, before executing the tool call, invokes `skills-watch-hook` with the tool payload on stdin.
-4. Hook checks the `Bash` command against the deny-list patterns.
-5. If clean: exit 0 (allow), append `ALLOW Bash python3 ...` to live log; tool runs.
-6. If `curl example.com` is in the command: exit 2 with stderr `BLOCKED: Bash-egress example.com — to allow, run: npx skills-watch allow add-host example.com`.
-7. Claude sees the exit-2 error, stops, tells the user what was blocked and how to re-enable.
+2. **`UserPromptSubmit` hook fires first.** `skills-watch-prompt-hook` reads the prompt JSON, regex-extracts `tango-research`, writes it atomically to `~/.skills-watch/current-skill`, exits 0.
+3. Claude reads `tango-research/SKILL.md`, decides to call `Bash` to run a Python script.
+4. **`PreToolUse` hook fires** before the tool call executes. `skills-watch-hook` receives the tool-call JSON on stdin, reads `~/.skills-watch/current-skill` (finds `tango-research`), loads config, computes the effective allow-list: `allow.paths ∪ per_skill["tango-research"].paths`.
+5. Hook checks the `Bash` command against deny-list patterns, using the effective allow-list.
+6. On allow: exit 0, append `ALLOW Bash python3 ... [skill=tango-research]` to live log; tool runs.
+7. On block (e.g. `curl example.com` in the command): exit 2 with stderr `BLOCKED: Bash-egress example.com — to allow for tango-research, run: npx skills-watch allow add-host --for tango-research example.com`. The `--for tango-research` scope is pre-filled because the sidecar said the skill was active.
+8. Claude sees the exit-2 error, stops, relays to the user with the per-skill scope already in the suggested command.
 
 ---
 
