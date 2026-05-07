@@ -14,6 +14,7 @@ const {
   effectiveAllowHosts,
   isPathDenied,
   isHostDenied,
+  isHostAllowed,
   INSTALLER_PATTERNS,
   SENSITIVE_VAR_PREFIXES,
   VAR_READ_PATTERNS,
@@ -21,6 +22,7 @@ const {
   SECRET_READ_PATTERNS,
   INGRESS_EXEC_PATTERNS,
   EGRESS_DATA_PATTERNS,
+  EGRESS_FILE_PAYLOAD_PATTERNS,
   findAllMatches,
 } = require('./policy');
 
@@ -160,21 +162,45 @@ function decide(payload, skill, config) {
     }
 
     // 3. Egress data (POST, -d @, --data-binary @).
+    //
+    // Two tiers:
+    //   (a) FILE-PAYLOAD shape (-d @, --data-binary @, --post-file, etc.) —
+    //       blocked unconditionally. This is the canonical exfil shape and
+    //       allowlisting "you can talk to this API" should not implicitly
+    //       extend to "you can upload arbitrary local files there."
+    //   (b) METHOD-VERB shape (-X POST/PUT/DELETE/PATCH without a file
+    //       payload) — allowed when the destination host is on the
+    //       allow-list (default DEFAULT_ALLOW_HOSTS plus user/skill
+    //       additions). Blocked otherwise.
     for (const re of EGRESS_DATA_PATTERNS) {
       if (re.test(cmd)) {
-        // Try to extract destination host for a better message.
         let host = '';
         for (const hostRe of HOST_EXTRACT_PATTERNS) {
           const matches = findAllMatches(hostRe, cmd);
           if (matches.length) { host = matches[0][1]; break; }
         }
+
+        let isFilePayload = false;
+        for (const filePat of EGRESS_FILE_PAYLOAD_PATTERNS) {
+          if (filePat.test(cmd)) { isFilePayload = true; break; }
+        }
+
+        if (host && !isFilePayload && isHostAllowed(host, allowHosts)) {
+          return {
+            action: 'ALLOW',
+            verb: 'BASH-EGRESS',
+            object: host,
+            loud: firstSeenHost(host),
+          };
+        }
+
         return {
           action: 'BLOCK',
           verb: 'BASH-EGRESS',
           object: host || cmd.slice(0, 80),
           risk_category: 'UNAUTHORIZED-EGRESS',
-          suggestion_kind: host ? 'host' : null,
-          suggestion_value: host || null,
+          suggestion_kind: host && !isFilePayload ? 'host' : null,
+          suggestion_value: host && !isFilePayload ? host : null,
         };
       }
     }

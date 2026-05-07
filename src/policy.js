@@ -75,6 +75,18 @@ const EGRESS_DATA_PATTERNS = [
   /\bwget\b[^|;]*\s--post-data\b/,
 ];
 
+// File-payload egress: sending a local file as the request body. This is
+// the strictest exfil shape — block even when the destination host is on
+// the allow-list, since allowlisting "you can talk to this API" is not
+// the same as "you can upload arbitrary local files there."
+const EGRESS_FILE_PAYLOAD_PATTERNS = [
+  /\bcurl\b[^|;]*\s-d\s+@/,
+  /\bcurl\b[^|;]*\s--data\s+@/,
+  /\bcurl\b[^|;]*\s--data-binary\s+@/,
+  /\bcurl\b[^|;]*\s-F\s+[^=]+=@/,
+  /\bwget\b[^|;]*\s--post-file\b/,
+];
+
 const SENSITIVE_VAR_PREFIXES = /^(AWS_|ANTHROPIC_|OPENAI_|GEMINI_|GOOGLE_|GITHUB_TOKEN|NPM_TOKEN|SSH_)/;
 
 const VAR_READ_PATTERNS = [
@@ -87,6 +99,11 @@ const HOST_EXTRACT_PATTERNS = [
   /\bcurl\s+(?:-\w+\s+\S*\s+)*(?:https?:\/\/)?([a-zA-Z0-9][\w.-]*\.[a-zA-Z]{2,})/g,
   /\bwget\s+(?:-\w+\s+\S*\s+)*(?:https?:\/\/)?([a-zA-Z0-9][\w.-]*\.[a-zA-Z]{2,})/g,
   /\bgit\s+(?:push|clone|fetch|pull)\s+(?:[\w@:.+-]+@)?([a-zA-Z0-9][\w.-]*\.[a-zA-Z]{2,})/g,
+  // Robust fallback: any https?://hostname appearing in a curl/wget line.
+  // The structured patterns above choke on quoted args containing spaces
+  // (e.g. -H 'Authorization: Bearer x'), so this catches the URL by raw
+  // scheme prefix instead of trying to model curl's flag grammar.
+  /\b(?:curl|wget)\b[^;|]*?\bhttps?:\/\/([a-zA-Z0-9][\w.-]*\.[a-zA-Z]{2,})/g,
 ];
 
 const SECRET_READ_PATTERNS = [
@@ -166,6 +183,14 @@ function isHostDenied(host, allowSet) {
   return true;
 }
 
+function isHostAllowed(host, allowSet) {
+  if (!host) return false;
+  for (const allow of allowSet) {
+    if (hostMatches(host, allow)) return true;
+  }
+  return false;
+}
+
 function findAllMatches(re, str) {
   const results = [];
   const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
@@ -181,6 +206,7 @@ module.exports = {
   INSTALLER_PATTERNS,
   INGRESS_EXEC_PATTERNS,
   EGRESS_DATA_PATTERNS,
+  EGRESS_FILE_PAYLOAD_PATTERNS,
   SENSITIVE_VAR_PREFIXES,
   VAR_READ_PATTERNS,
   HOST_EXTRACT_PATTERNS,
@@ -191,6 +217,7 @@ module.exports = {
   effectiveAllowHosts,
   isPathDenied,
   isHostDenied,
+  isHostAllowed,
   hostMatches,
   findAllMatches,
 };
