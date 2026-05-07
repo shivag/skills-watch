@@ -6,6 +6,8 @@ const {
   readStdin,
   riskCopy,
   firstSeenHost,
+  bashTargetCwd,
+  isUnderTrustedCwd,
 } = require('./common');
 const {
   effectiveAllowPaths,
@@ -120,9 +122,20 @@ function decide(payload, skill, config) {
   if (tool === 'Bash') {
     const cmd = input.command || '';
 
-    // 1. Installer (supply-chain).
+    // 1. Installer (supply-chain). If the install would happen under a
+    // user-trusted cwd (allow.install_cwds), let it through with a tagged log.
     for (const { re, label } of INSTALLER_PATTERNS) {
       if (re.test(cmd)) {
+        const trustedCwds = (config && config.allow && config.allow.install_cwds) || [];
+        const targetCwd = bashTargetCwd(input);
+        if (isUnderTrustedCwd(targetCwd, trustedCwds)) {
+          return {
+            action: 'ALLOW',
+            verb: 'EXEC-INSTALLER',
+            object: label,
+            trusted_install_cwd: targetCwd,
+          };
+        }
         return {
           action: 'BLOCK',
           verb: 'EXEC-INSTALLER',
@@ -271,7 +284,10 @@ function renderLogLine(decision, skill) {
     return `${ts} BLOCK ${decision.verb} ${decision.object} [risk=${cat}]${owasp}${atlas}${skillTag}`;
   }
   const loud = decision.loud ? 'LOUD ' : '';
-  return `${ts} ALLOW ${loud}${decision.verb} ${decision.object}${skillTag}`;
+  const trusted = decision.trusted_install_cwd
+    ? ` [trusted_install_cwd=${decision.trusted_install_cwd}]`
+    : '';
+  return `${ts} ALLOW ${loud}${decision.verb} ${decision.object}${trusted}${skillTag}`;
 }
 
 async function run() {

@@ -104,6 +104,114 @@ assertEq(r8.risk_category, 'SENSITIVE-LEAK', 'printenv ANTHROPIC_* → SENSITIVE
 const r9 = decide({ tool_name: 'Bash', tool_input: { command: 'cat ~/.ssh/id_rsa' } }, '', empty());
 assertEq(r9.risk_category, 'SENSITIVE-LEAK', 'cat ~/.ssh/id_rsa → SENSITIVE-LEAK');
 
+section('common: bashTargetCwd extraction');
+const { bashTargetCwd, isUnderTrustedCwd } = require('../src/common');
+assertEq(
+  bashTargetCwd({ cwd: '/Users/x/proj', command: 'npm install' }),
+  '/Users/x/proj',
+  'explicit tool_input.cwd wins',
+);
+assertEq(
+  bashTargetCwd({ command: 'cd /Users/x/proj && npm install' }),
+  '/Users/x/proj',
+  'cd <abs> && ... extracted',
+);
+assertEq(
+  bashTargetCwd({ command: 'cd "/Users/x with space/proj" && npm install' }),
+  '/Users/x with space/proj',
+  'cd "<quoted>" && ... extracted',
+);
+assertEq(
+  bashTargetCwd({ command: "cd '/Users/x/proj' ; npm install" }),
+  '/Users/x/proj',
+  "cd '<quoted>' ; ... extracted",
+);
+assertEq(
+  bashTargetCwd({ command: 'cd ~/code/foo && npm install' }),
+  path.join(HOME, 'code/foo'),
+  'cd ~/<rel> expands home',
+);
+assertEq(
+  bashTargetCwd({ command: 'npm install' }),
+  process.cwd(),
+  'no cd → falls back to process.cwd()',
+);
+
+section('common: isUnderTrustedCwd matching');
+assert(
+  isUnderTrustedCwd('/Users/x/code/cameranotary/web', ['/Users/x/code']),
+  'descendant matches trusted ancestor',
+);
+assert(
+  isUnderTrustedCwd('/Users/x/code', ['/Users/x/code']),
+  'exact match is trusted',
+);
+assert(
+  !isUnderTrustedCwd('/Users/x/code-other', ['/Users/x/code']),
+  'sibling prefix is NOT trusted (no path-separator boundary)',
+);
+assert(
+  !isUnderTrustedCwd('/tmp/elsewhere', ['/Users/x/code']),
+  'unrelated path is not trusted',
+);
+assert(
+  isUnderTrustedCwd(path.join(HOME, 'code/x'), ['~/code']),
+  '~/-prefixed entries expand correctly',
+);
+assert(
+  !isUnderTrustedCwd('/Users/x/code', []),
+  'empty trusted list never matches',
+);
+
+section('hook: installer ALLOWED under trusted_install_cwds');
+const cfgTrust = empty();
+cfgTrust.allow.install_cwds = [path.join(HOME, 'code')];
+const rTrust1 = decide(
+  { tool_name: 'Bash', tool_input: { cwd: path.join(HOME, 'code/cameranotary/web'), command: 'npm install' } },
+  '',
+  cfgTrust,
+);
+assertEq(rTrust1.action, 'ALLOW', 'npm install under ~/code (explicit cwd) ALLOWED');
+assertEq(rTrust1.verb, 'EXEC-INSTALLER', 'verb still EXEC-INSTALLER for log clarity');
+assertEq(
+  rTrust1.trusted_install_cwd,
+  path.join(HOME, 'code/cameranotary/web'),
+  'allow decision carries the resolved trusted cwd',
+);
+
+const rTrust2 = decide(
+  { tool_name: 'Bash', tool_input: { command: `cd ${path.join(HOME, 'code/proj')} && npm install` } },
+  '',
+  cfgTrust,
+);
+assertEq(rTrust2.action, 'ALLOW', 'cd <trusted> && npm install ALLOWED');
+
+const rUntrust = decide(
+  { tool_name: 'Bash', tool_input: { cwd: '/tmp/random-skill-output', command: 'npm install' } },
+  '',
+  cfgTrust,
+);
+assertEq(rUntrust.action, 'BLOCK', 'npm install in /tmp still BLOCKED');
+assertEq(rUntrust.risk_category, 'SUPPLY-CHAIN', 'untrusted install retains SUPPLY-CHAIN category');
+
+const rNoTrust = decide(
+  { tool_name: 'Bash', tool_input: { cwd: path.join(HOME, 'code/x'), command: 'npm install' } },
+  '',
+  empty(),
+);
+assertEq(rNoTrust.action, 'BLOCK', 'empty install_cwds list → still BLOCKED (default-deny preserved)');
+
+section('hook: trusted-install log line carries [trusted_install_cwd=...] tag');
+const trustedLog = renderLogLine(rTrust1, '');
+assert(
+  trustedLog.includes('[trusted_install_cwd='),
+  'log line tags trusted-install allows',
+);
+assert(
+  trustedLog.includes('EXEC-INSTALLER'),
+  'log line names the installer verb',
+);
+
 section('hook: per-skill allow-list works');
 const cfgTango = empty();
 cfgTango.per_skill['tango-research'] = { paths: [path.join(HOME, '.agents/tango.env')], hosts: [] };

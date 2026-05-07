@@ -36,7 +36,7 @@ function firstSeenHost(host) {
   return true;
 }
 
-const EMPTY_CONFIG = Object.freeze({ allow: { paths: [], hosts: [] }, deny: { hosts: [] }, per_skill: {} });
+const EMPTY_CONFIG = Object.freeze({ allow: { paths: [], hosts: [], install_cwds: [] }, deny: { hosts: [] }, per_skill: {} });
 
 function ensureStateDir() {
   fs.mkdirSync(STATE_DIR, { recursive: true });
@@ -49,14 +49,50 @@ function expandHome(p) {
   return p;
 }
 
+// Resolve where a Bash command will actually run. Order:
+//   1. tool_input.cwd if the model provided one explicitly.
+//   2. A leading `cd <path> && …` or `cd <path> ; …` extracted from the command.
+//   3. Fall back to the hook process's own cwd (= Claude Code session cwd).
+function bashTargetCwd(toolInput) {
+  if (toolInput && typeof toolInput.cwd === 'string' && toolInput.cwd) {
+    return path.resolve(expandHome(toolInput.cwd));
+  }
+  const cmd = (toolInput && toolInput.command || '').trim();
+  // Match `cd /abs/path && ...`, `cd "with space" && ...`, `cd ~/x ; ...`.
+  const m = /^cd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))\s*(?:&&|;)/.exec(cmd);
+  if (m) {
+    const target = m[1] || m[2] || m[3];
+    const expanded = expandHome(target);
+    return path.isAbsolute(expanded)
+      ? path.resolve(expanded)
+      : path.resolve(process.cwd(), expanded);
+  }
+  return process.cwd();
+}
+
+// True if `target` is the same as, or a descendant of, any of `trustedCwds`.
+// Each trusted entry is expanded for `~` and resolved before comparison.
+function isUnderTrustedCwd(target, trustedCwds) {
+  if (!Array.isArray(trustedCwds) || trustedCwds.length === 0) return false;
+  const t = path.resolve(target);
+  for (const raw of trustedCwds) {
+    if (typeof raw !== 'string' || !raw) continue;
+    const trusted = path.resolve(expandHome(raw));
+    if (t === trusted) return true;
+    if (t.startsWith(trusted + path.sep)) return true;
+  }
+  return false;
+}
+
 function readConfig() {
   if (!fs.existsSync(CONFIG_PATH)) return JSON.parse(JSON.stringify(EMPTY_CONFIG));
   try {
     const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
     const parsed = JSON.parse(raw);
-    if (!parsed.allow) parsed.allow = { paths: [], hosts: [] };
+    if (!parsed.allow) parsed.allow = { paths: [], hosts: [], install_cwds: [] };
     if (!parsed.allow.paths) parsed.allow.paths = [];
     if (!parsed.allow.hosts) parsed.allow.hosts = [];
+    if (!parsed.allow.install_cwds) parsed.allow.install_cwds = [];
     if (!parsed.deny) parsed.deny = { hosts: [] };
     if (!parsed.deny.hosts) parsed.deny.hosts = [];
     if (!parsed.per_skill) parsed.per_skill = {};
@@ -144,6 +180,8 @@ module.exports = {
   EMPTY_CONFIG,
   ensureStateDir,
   expandHome,
+  bashTargetCwd,
+  isUnderTrustedCwd,
   readConfig,
   writeConfig,
   readSidecar,

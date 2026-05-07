@@ -284,21 +284,51 @@ function allow(args) {
     case 'remove-host':
       mutate('hosts', 'remove', rest[0]);
       break;
+    case 'add-install-cwd':
+    case 'remove-install-cwd':
+      installCwdMutate(sub === 'add-install-cwd' ? 'add' : 'remove', rest[0]);
+      break;
     case 'list':
       listAllow(cfg);
       break;
     default:
       console.error(`skills-watch: unknown 'allow' subcommand '${sub}'.`);
-      console.error("  Try: allow {add | add-host | remove | remove-host | list} [--for <skill-csv>] <value>");
+      console.error("  Try: allow {add | add-host | remove | remove-host | add-install-cwd | remove-install-cwd | list} [--for <skill-csv>] <value>");
       process.exit(2);
   }
 }
 
+// install_cwds is a global allow-list only — never per-skill, since the trust
+// boundary is "this directory tree is mine," not "this skill is trusted."
+function installCwdMutate(op, value) {
+  if (!value) {
+    console.error(`skills-watch: 'allow ${op}-install-cwd' requires a path.`);
+    process.exit(2);
+  }
+  const cfg = readConfig();
+  if (!cfg.allow.install_cwds) cfg.allow.install_cwds = [];
+  const list = cfg.allow.install_cwds;
+  if (op === 'add') {
+    if (!list.includes(value)) list.push(value);
+  } else {
+    const i = list.indexOf(value);
+    if (i >= 0) list.splice(i, 1);
+  }
+  writeConfig(cfg);
+  console.log(`skills-watch: ${op} install-cwd ${value} (global).`);
+}
+
 function listAllow(cfg) {
+  const installCwds = cfg.allow.install_cwds || [];
   console.log('Global allow-list:');
-  if (cfg.allow.paths.length === 0 && cfg.allow.hosts.length === 0) console.log('  (empty)');
-  for (const p of cfg.allow.paths) console.log(`  path:  ${p}`);
-  for (const h of cfg.allow.hosts) console.log(`  host:  ${h}`);
+  if (
+    cfg.allow.paths.length === 0 &&
+    cfg.allow.hosts.length === 0 &&
+    installCwds.length === 0
+  ) console.log('  (empty)');
+  for (const p of cfg.allow.paths) console.log(`  path:         ${p}`);
+  for (const h of cfg.allow.hosts) console.log(`  host:         ${h}`);
+  for (const c of installCwds) console.log(`  install-cwd:  ${c}`);
   const skills = Object.keys(cfg.per_skill || {});
   if (skills.length) {
     console.log('');
@@ -323,10 +353,12 @@ Usage:
   skills-watch demo
   skills-watch summary [--since 1h|30m|2d]
   skills-watch risk    [--since 1h|30m|2d]
-  skills-watch allow add        [--for <skill-csv>] <path>
-  skills-watch allow add-host   [--for <skill-csv>] <host>
-  skills-watch allow remove     [--for <skill-csv>] <path>
-  skills-watch allow remove-host [--for <skill-csv>] <host>
+  skills-watch allow add               [--for <skill-csv>] <path>
+  skills-watch allow add-host          [--for <skill-csv>] <host>
+  skills-watch allow add-install-cwd   <path>     (global only)
+  skills-watch allow remove            [--for <skill-csv>] <path>
+  skills-watch allow remove-host       [--for <skill-csv>] <host>
+  skills-watch allow remove-install-cwd <path>
   skills-watch allow list
 
 Quick start:
